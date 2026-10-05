@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="theme-color" content="#f4f6f1">
+	<title>Hushline | Classroom sound monitor</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+	<link rel="stylesheet" href="colors.css">
+</head>
+<body>
+	<div class="app-shell">
+		<aside class="sidebar" aria-label="Main navigation">
+			<a class="brand" href="#overview" aria-label="Hushline home"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>hushline<span class="brand-period">.</span></span></a>
+			<div class="workspace-label">CAMPUS / NORTH WING</div>
+			<nav class="main-nav">
+				<a class="nav-link active" href="#overview"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="4" rx="1.5"/><rect x="13.5" y="10.5" width="7" height="10" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/></svg><span>Overview</span></a>
+				<a class="nav-link" href="#rooms"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V5.8c0-.5.4-.9.9-.9h9.2c.5 0 .9.4.9.9V20M4 20h16M15 10h4.1c.5 0 .9.4.9.9V20M8 8h3M8 11.5h3M8 15h3"/></svg><span>Classrooms</span><span class="nav-count">6</span></a>
+				<a class="nav-link" href="#alerts"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><span>Alert history</span><span class="alert-dot"></span></a>
+			</nav>
+			<div class="sidebar-section-head"><span>YOUR ROOMS</span><button class="icon-button add-room" aria-label="Add room" title="Add room">+</button></div>
+			<div class="room-list" id="room-list">
+				<button class="room-link selected" data-room="Room 204" data-level="46" data-state="Calm"><span class="room-indicator calm"></span><span>Room 204</span><span class="room-level">46</span></button>
+				<button class="room-link" data-room="Room 201" data-level="72" data-state="Loud"><span class="room-indicator loud"></span><span>Room 201</span><span class="room-level">72</span></button>
+				<button class="room-link" data-room="Room 205" data-level="58" data-state="On track"><span class="room-indicator steady"></span><span>Room 205</span><span class="room-level">58</span></button>
+				<button class="room-link" data-room="Lab 03" data-level="39" data-state="Calm"><span class="room-indicator calm"></span><span>Lab 03</span><span class="room-level">39</span></button>
+				<button class="room-link" data-room="Library" data-level="34" data-state="Calm"><span class="room-indicator calm"></span><span>Library</span><span class="room-level">34</span></button>
+				<button class="room-link" data-room="Studio 02" data-level="64" data-state="On track"><span class="room-indicator steady"></span><span>Studio 02</span><span class="room-level">64</span></button>
+			</div>
+			<div class="sidebar-bottom">
+				<div class="device-card"><span class="device-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v9m0 0 4-4m-4 4L8 8M5 14v4a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-4"/></svg></span><span><strong>All sensors online</strong><small>6 of 6 connected</small></span><span class="online-pip"></span></div>
+				<button class="profile-button"><span class="avatar">AM</span><span class="profile-copy"><strong>Alex Morgan</strong><small>School administrator</small></span><svg class="profile-more" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
+			</div>
+		</aside>
+
+		<main class="main-content" id="overview">
+			<header class="topbar"><div class="breadcrumb"><span>North Wing</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5"/></svg><strong>Overview</strong></div><div class="topbar-actions"><span class="demo-badge">SAMPLE DATA</span><span class="last-updated"><span class="live-pip"></span>Live <span class="updated-time">Updated just now</span></span><button class="top-icon" aria-label="Search" title="Search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m16 16 4.5 4.5"/></svg></button><button class="top-icon notification-button" aria-label="Notifications" title="Notifications"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><i></i></button></div></header>
+			<div class="content-wrap">
+				<section class="page-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span><span id="current-date"></span></div><h1>Good morning, Alex<span class="heading-period">.</span></h1><p class="heading-subtitle">Here’s what’s happening across your classrooms today.</p></div><button class="export-button" id="export-button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3"/></svg><span>Export report</span></button></section>
+
+				<section class="view-switch" aria-label="Dashboard view"><div><strong>Monitoring view</strong><span id="view-description">Live classroom conditions</span></div><div class="segmented view-tabs" role="tablist" aria-label="Monitoring view"><button class="view-tab active" id="live-tab" role="tab" aria-selected="true" data-view="live">Live</button><button class="view-tab" id="history-tab" role="tab" aria-selected="false" data-view="history">History</button></div></section>
+
+				<section class="summary-grid live-summary" aria-label="Live campus sound summary">
+					<article class="summary-card"><div class="card-topline"><span class="metric-label">CAMPUS SOUND LEVEL</span><span class="metric-icon sound-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10v4h4l5 4V6l-5 4H3ZM16 9a5 5 0 0 1 0 6M18.5 6.5a9 9 0 0 1 0 11"/></svg></span></div><div class="metric-value-row"><strong class="metric-value" id="campus-db">46</strong><span class="metric-unit">dB</span><span class="change-pill positive">↘ 8%</span></div><div class="metric-foot"><span>vs. previous hour</span><span class="mini-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></div></article>
+					<article class="summary-card"><div class="card-topline"><span class="metric-label">CLASSROOMS ON TRACK</span><span class="metric-icon track-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/><circle cx="12" cy="12" r="9"/></svg></span></div><div class="metric-value-row"><strong class="metric-value">5</strong><span class="metric-unit">of 6</span></div><div class="metric-foot"><span>One room needs attention</span><span class="metric-emphasis">83%</span></div><div class="progress-line"><span></span></div></article>
+					<article class="summary-card"><div class="card-topline"><span class="metric-label">ACTIVE ALERTS</span><span class="metric-icon alert-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2.8 19h18.4L12 3Z"/><path d="M12 9v4m0 3h.01"/></svg></span></div><div class="metric-value-row"><strong class="metric-value">2</strong><span class="metric-unit">today</span><span class="change-pill alert-change">1 active</span></div><div class="metric-foot"><span>Last alert <strong>10:42 AM</strong></span><a class="alert-text" href="#alerts">View alerts →</a></div></article>
+					<article class="summary-card"><div class="card-topline"><span class="metric-label">AVG. RESPONSE TIME</span><span class="metric-icon time-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span></div><div class="metric-value-row"><strong class="metric-value">1.8</strong><span class="metric-unit">min</span></div><div class="metric-foot"><span>Down from last week</span><span class="change-pill positive">↘ 12%</span></div></article>
+				</section>
+				<section class="summary-grid history-summary" aria-label="Historical sound summary" hidden>
+					<article class="summary-card"><div class="card-topline"><span class="metric-label">AVERAGE SOUND LEVEL</span><span class="metric-icon sound-icon">dB</span></div><div class="metric-value-row"><strong class="metric-value" id="history-average">51</strong><span class="metric-unit">dB</span><span class="change-pill positive">↘ 6%</span></div><div class="metric-foot"><span>vs. previous period</span><span>Campus average</span></div></article>
+					<article class="summary-card"><div class="card-topline"><span class="metric-label">TIME ABOVE LIMIT</span><span class="metric-icon alert-icon">!</span></div><div class="metric-value-row"><strong class="metric-value" id="history-over-limit">18</strong><span class="metric-unit">min</span></div><div class="metric-foot"><span>Across all classrooms</span><span class="metric-emphasis">4% of period</span></div></article>
+					<article class="summary-card"><div class="card-topline"><span class="metric-label">ALERTS TRIGGERED</span><span class="metric-icon track-icon">↗</span></div><div class="metric-value-row"><strong class="metric-value" id="history-alert-count">8</strong><span class="metric-unit">events</span></div><div class="metric-foot"><span id="history-alert-resolution">7 resolved</span><span class="metric-emphasis">1 acknowledged</span></div></article>
+					<article class="summary-card"><div class="card-topline"><span class="metric-label">PEAK SOUND LEVEL</span><span class="metric-icon time-icon">↑</span></div><div class="metric-value-row"><strong class="metric-value" id="history-peak">78</strong><span class="metric-unit">dB</span></div><div class="metric-foot"><span>Room 201 · 10:42 AM</span><span class="alert-text">View event →</span></div></article>
+				</section>
+
+				<section class="dashboard-grid">
+					<article class="panel trend-panel"><div class="panel-header"><div><div class="panel-kicker">SOUND TRENDS</div><h2>Noise over time</h2></div><div class="chart-controls"><div class="segmented" role="group" aria-label="Chart time range"><button class="range-button active" data-range="Today">Day</button><button class="range-button" data-range="Week">Week</button><button class="range-button" data-range="Month">Month</button></div><button class="select-button" id="room-select"><span id="selected-room">Room 204</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button></div></div>
+						<div class="chart-summary"><strong id="room-db">46 <small>dB</small></strong><span class="chart-state"><i></i><span id="room-state">Calm</span><span id="chart-context">right now</span></span><span class="chart-legend"><i></i>Sound level <i class="threshold-key"></i>Adaptive threshold</span></div>
+						<div class="chart-area" aria-label="Noise trend chart for the selected classroom"><div class="y-labels"><span>90</span><span>75</span><span>60</span><span>45</span><span>30</span></div><div class="plot"><div class="grid-line" style="top:0%"></div><div class="grid-line" style="top:25%"></div><div class="grid-line" style="top:50%"></div><div class="grid-line" style="top:75%"></div><div class="grid-line" style="top:100%"></div><div class="threshold-line" style="top:42%"><span>Adaptive threshold <b id="threshold-chart-label">65 dB</b></span></div><svg class="trend-svg" viewBox="0 0 800 220" preserveAspectRatio="none" role="img" aria-label="Sound level varied between 38 and 73 decibels, current level 46"><defs><linearGradient id="area-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#4d9272" stop-opacity=".23"/><stop offset="100%" stop-color="#4d9272" stop-opacity="0"/></linearGradient></defs><path class="chart-fill" d="M0,152 C28,148 39,145 58,153 S91,172 116,139 S151,113 174,136 S211,151 232,121 S264,81 291,111 S324,128 348,106 S382,122 407,101 S445,55 464,84 S500,119 522,93 S558,73 581,105 S612,136 638,108 S670,85 696,99 S728,112 748,76 S779,72 800,63 L800,220 L0,220Z"/><path class="chart-line" d="M0,152 C28,148 39,145 58,153 S91,172 116,139 S151,113 174,136 S211,151 232,121 S264,81 291,111 S324,128 348,106 S382,122 407,101 S445,55 464,84 S500,119 522,93 S558,73 581,105 S612,136 638,108 S670,85 696,99 S728,112 748,76 S779,72 800,63"/><circle class="chart-point" cx="800" cy="63" r="5"/></svg><div class="x-labels"><span>8:00</span><span>9:00</span><span>10:00</span><span>11:00</span><span>12:00</span><span>1:00</span><span>2:00</span><span>3:00</span></div></div></div>
+						<div class="chart-note"><span class="note-icon">✳</span><span><strong>Adaptive insight</strong> Noise has stayed below the class threshold for 82% of the morning.</span></div>
+					</article>
+
+					<article class="panel rooms-panel" id="rooms"><div class="panel-header"><div><div class="panel-kicker">LIVE SNAPSHOT</div><h2>Classrooms</h2></div><button class="more-button" aria-label="More classroom options">···</button></div><div class="room-table-head"><span>ROOM</span><span>LEVEL</span><span>STATUS</span></div>
+						<div class="classroom-list">
+							<button class="classroom-row chosen" data-room="Room 204" data-level="46" data-state="Calm"><span class="classroom-name"><span class="room-square green">204</span><span><strong>Room 204</strong><small>Grade 4 · Ms. Patel</small></span></span><span class="table-db">46 <small>dB</small><i class="spark green-spark"></i></span><span class="status-pill calm-pill">Calm</span></button>
+							<button class="classroom-row" data-room="Room 201" data-level="72" data-state="Loud"><span class="classroom-name"><span class="room-square coral">201</span><span><strong>Room 201</strong><small>Grade 5 · Mr. Chen</small></span></span><span class="table-db">72 <small>dB</small><i class="spark coral-spark"></i></span><span class="status-pill loud-pill">Too loud</span></button>
+							<button class="classroom-row" data-room="Room 205" data-level="58" data-state="On track"><span class="classroom-name"><span class="room-square blue">205</span><span><strong>Room 205</strong><small>Grade 4 · Ms. Rivera</small></span></span><span class="table-db">58 <small>dB</small><i class="spark blue-spark"></i></span><span class="status-pill steady-pill">On track</span></button>
+							<button class="classroom-row" data-room="Lab 03" data-level="39" data-state="Calm"><span class="classroom-name"><span class="room-square yellow">L3</span><span><strong>Science Lab</strong><small>Grade 6 · Mr. Blake</small></span></span><span class="table-db">39 <small>dB</small><i class="spark green-spark"></i></span><span class="status-pill calm-pill">Calm</span></button>
+						</div><a href="#rooms" class="all-rooms">View all 6 classrooms <span>→</span></a>
+					</article>
+
+					<article class="panel alert-panel" id="alerts"><div class="panel-header"><div><div class="panel-kicker">NEEDS YOUR ATTENTION</div><h2>Recent alerts <span class="alert-count">2</span></h2></div><button class="text-action" id="mute-button"><span class="mute-icon">◖</span><span>Mute</span></button></div>
+						<div class="alert-item active-alert"><span class="alert-symbol">!</span><div class="alert-copy"><div class="alert-title-line"><strong>Noise above threshold</strong><span class="new-label">NEW</span></div><p>Room 201 has been above 70 dB for 4 minutes.</p><div class="alert-meta"><span>10:42 AM</span><span class="meta-divider"></span><span>72 dB</span><span class="alert-severity">High</span></div></div><button class="alert-chevron" aria-label="Open Room 201 alert">›</button></div>
+						<div class="alert-item"><span class="resolved-symbol">✓</span><div class="alert-copy"><div class="alert-title-line"><strong>Noise returned to normal</strong></div><p>Room 205 is back within its adaptive range.</p><div class="alert-meta"><span>9:18 AM</span><span class="meta-divider"></span><span>58 dB</span><span class="resolved-label">Resolved</span></div></div><button class="alert-chevron" aria-label="View resolved alert">›</button></div><a href="#alerts" class="all-alerts">See alert history <span>→</span></a>
+					</article>
+
+					<article class="panel settings-panel"><div class="panel-header"><div><div class="panel-kicker">CLASSROOM CONTROLS</div><h2>Activity &amp; sound limit</h2></div><span class="adaptive-badge"><span></span><span id="adaptive-state">AI ACTIVE</span></span></div><p class="settings-description">Choose what the class is doing. Adaptive mode applies a suitable sound limit.</p><div class="activity-row"><span class="activity-icon">▤</span><label class="activity-copy" for="activity-mode"><strong>Classroom activity</strong><select id="activity-mode" aria-label="Classroom activity"><option value="quiet">Quiet work</option><option value="discussion" selected>Group discussion</option><option value="presentation">Presentation</option><option value="transition">Movement / transition</option></select></label></div><div class="control-mode"><span>Threshold control</span><div class="segmented mode-switch" role="group" aria-label="Threshold control mode"><button class="mode-button active" data-mode="adaptive" aria-pressed="true">Adaptive</button><button class="mode-button" data-mode="manual" aria-pressed="false">Manual</button></div></div><div class="threshold-control"><div class="threshold-heading"><span>Noise limit</span><strong><span id="threshold-value">65</span><small> dB</small></strong></div><input type="range" id="threshold-slider" min="45" max="85" value="65" aria-label="Noise limit in decibels"><div class="range-labels"><span>Quiet · 45</span><span>85 · Active</span></div></div><div class="settings-footer"><span id="control-hint">Suggested for group discussion</span><button class="settings-arrow" id="reset-mode" aria-label="Reset to activity recommendation" title="Reset recommendation">↺</button></div></article>
+				</section>
+				<footer class="page-footer"><span>HUSHLINE <i></i> SOUND THAT SUPPORTS LEARNING</span><span>Device sync <strong>Healthy</strong><span class="online-pip"></span></span></footer>
+			</div>
+		</main>
+	</div>
+	<div class="toast" id="toast" role="status" aria-live="polite"></div>
+	<script>
+		const roomButtons = document.querySelectorAll('[data-room]');
+		const toast = document.getElementById('toast');
+		let toastTimer;
+		let currentView = 'live';
+		let thresholdMode = 'adaptive';
+		let selectedRoomLevel = 46;
+		let selectedRoomState = 'Calm';
+		function showToast(message) {
+			toast.textContent = message;
+			toast.classList.add('visible');
+			clearTimeout(toastTimer);
+			toastTimer = setTimeout(() => toast.classList.remove('visible'), 2600);
+		}
+		function selectRoom(room, level, state) {
+			roomButtons.forEach((button) => {
+				const active = button.dataset.room === room;
+				button.classList.toggle('selected', active);
+				button.classList.toggle('chosen', active);
+			});
+			document.getElementById('room-db').innerHTML = `${level} <small>dB</small>`;
+			document.getElementById('selected-room').textContent = room;
+			document.getElementById('room-state').textContent = state;
+			selectedRoomLevel = Number(level);
+			selectedRoomState = state;
+		}
+		document.getElementById('current-date').textContent = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }).format(new Date()).toUpperCase();
+		roomButtons.forEach((button) => button.addEventListener('click', () => selectRoom(button.dataset.room, button.dataset.level, button.dataset.state)));
+		document.getElementById('room-select').addEventListener('click', () => {
+			const rooms = [...document.querySelectorAll('.room-link')];
+			const currentIndex = rooms.findIndex((room) => room.dataset.room === document.getElementById('selected-room').textContent);
+			const nextRoom = rooms[(currentIndex + 1) % rooms.length];
+			selectRoom(nextRoom.dataset.room, nextRoom.dataset.level, nextRoom.dataset.state);
+		});
+		const thresholdSlider = document.getElementById('threshold-slider');
+		const activityRecommendations = { quiet: 50, discussion: 65, presentation: 60, transition: 72 };
+		function setThreshold(value) {
+			thresholdSlider.value = value;
+			document.getElementById('threshold-value').textContent = value;
+			document.getElementById('threshold-chart-label').textContent = `${value} dB`;
+			document.querySelector('.threshold-line').style.top = `${((90 - value) / 60) * 100}%`;
+			thresholdSlider.style.setProperty('--range-fill', `${((value - 45) / 40) * 100}%`);
+		}
+		thresholdSlider.addEventListener('input', (event) => {
+			const value = event.target.value;
+			document.getElementById('threshold-value').textContent = value;
+			document.getElementById('threshold-chart-label').textContent = `${value} dB`;
+			document.querySelector('.threshold-line').style.top = `${((90 - value) / 60) * 100}%`;
+			thresholdSlider.style.setProperty('--range-fill', `${((value - 45) / 40) * 100}%`);
+			if (thresholdMode === 'adaptive') setThresholdMode('manual');
+		});
+		function setThresholdMode(mode) {
+			thresholdMode = mode;
+			document.querySelectorAll('.mode-button').forEach((button) => {
+				const active = button.dataset.mode === mode;
+				button.classList.toggle('active', active);
+				button.setAttribute('aria-pressed', active);
+			});
+			document.getElementById('adaptive-state').textContent = mode === 'adaptive' ? 'AI ACTIVE' : 'MANUAL';
+			document.getElementById('activity-mode').disabled = mode === 'manual';
+			if (mode === 'adaptive') {
+				const activity = document.getElementById('activity-mode').value;
+				setThreshold(activityRecommendations[activity]);
+				document.getElementById('control-hint').textContent = `Suggested for ${document.getElementById('activity-mode').selectedOptions[0].text.toLowerCase()}`;
+			} else {
+				document.getElementById('control-hint').textContent = 'Manual limit; AI recommendation paused';
+			}
+		}
+		document.querySelectorAll('.mode-button').forEach((button) => button.addEventListener('click', () => setThresholdMode(button.dataset.mode)));
+		document.getElementById('activity-mode').addEventListener('change', (event) => {
+			if (thresholdMode !== 'adaptive') setThresholdMode('adaptive');
+			else {
+				setThreshold(activityRecommendations[event.target.value]);
+				document.getElementById('control-hint').textContent = `Suggested for ${event.target.selectedOptions[0].text.toLowerCase()}`;
+			}
+		});
+		document.getElementById('reset-mode').addEventListener('click', () => setThresholdMode('adaptive'));
+		const chartRanges = {
+			Today: { labels: ['8:00', '9:00', '10:00', '11:00', '12:00', '1:00', '2:00', '3:00'], path: 'M0,152 C28,148 39,145 58,153 S91,172 116,139 S151,113 174,136 S211,151 232,121 S264,81 291,111 S324,128 348,106 S382,122 407,101 S445,55 464,84 S500,119 522,93 S558,73 581,105 S612,136 638,108 S670,85 696,99 S728,112 748,76 S779,72 800,63' },
+			Week: { labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun', 'Today'], path: 'M0,130 C35,116 44,142 78,127 S115,112 150,120 S189,92 224,105 S263,131 300,112 S339,84 374,98 S414,123 450,103 S489,91 524,112 S563,135 600,101 S640,85 674,93 S710,106 748,81 S777,72 800,68' },
+			Month: { labels: ['1', '5', '9', '13', '17', '21', '25', 'Today'], path: 'M0,159 C36,148 45,164 80,142 S116,126 150,139 S190,119 224,115 S262,89 300,106 S339,122 374,100 S414,113 450,94 S488,70 524,91 S562,111 600,88 S637,105 674,91 S712,75 748,82 S778,59 800,52' }
+		};
+		const historyByRange = {
+			Today: { average: 51, overLimit: 18, alerts: 8, peak: 78, resolved: 7 },
+			Week: { average: 54, overLimit: 96, alerts: 31, peak: 84, resolved: 28 },
+			Month: { average: 52, overLimit: 412, alerts: 124, peak: 89, resolved: 115 }
+		};
+		function updateHistorySummary(rangeName) {
+			const summary = historyByRange[rangeName];
+			document.getElementById('history-average').textContent = summary.average;
+			document.getElementById('history-over-limit').textContent = summary.overLimit;
+			document.getElementById('history-alert-count').textContent = summary.alerts;
+			document.getElementById('history-peak').textContent = summary.peak;
+			document.getElementById('history-alert-resolution').textContent = `${summary.resolved} resolved`;
+			if (currentView === 'history') {
+				const offsets = { 'Room 204': 0, 'Room 201': 17, 'Room 205': 7, 'Lab 03': -9, Library: -13, 'Studio 02': 11 };
+				const periodOffset = { Today: 0, Week: 2, Month: 1 };
+				const room = document.getElementById('selected-room').textContent;
+				document.getElementById('room-db').innerHTML = `${summary.average + (offsets[room] || 0) + periodOffset[rangeName]} <small>dB</small>`;
+				document.getElementById('room-state').textContent = 'Selected room';
+				document.querySelector('.chart-state i').hidden = true;
+			}
+		}
+		document.querySelectorAll('.range-button').forEach((button) => button.addEventListener('click', () => {
+			document.querySelectorAll('.range-button').forEach((item) => item.classList.toggle('active', item === button));
+			const range = chartRanges[button.dataset.range];
+			document.querySelector('.chart-line').setAttribute('d', range.path);
+			document.querySelector('.chart-fill').setAttribute('d', `${range.path} L800,220 L0,220Z`);
+			document.querySelectorAll('.x-labels span').forEach((label, index) => label.textContent = range.labels[index]);
+			updateHistorySummary(button.dataset.range);
+			if (currentView === 'history') document.getElementById('chart-context').textContent = `${button.dataset.range.toLowerCase()} average`;
+			showToast(`${button.dataset.range} trend selected`);
+		}));
+		document.querySelectorAll('.view-tab').forEach((button) => button.addEventListener('click', () => {
+			currentView = button.dataset.view;
+			const history = currentView === 'history';
+			document.querySelectorAll('.view-tab').forEach((tab) => {
+				const active = tab === button;
+				tab.classList.toggle('active', active);
+				tab.setAttribute('aria-selected', active);
+			});
+			document.querySelector('.live-summary').hidden = history;
+			document.querySelector('.history-summary').hidden = !history;
+			document.getElementById('view-description').textContent = history ? 'Aggregated sound and alert outcomes' : 'Live classroom conditions';
+			document.getElementById('chart-context').textContent = history ? `${document.querySelector('.range-button.active').dataset.range.toLowerCase()} average` : 'right now';
+			document.querySelector('.chart-state i').hidden = history;
+			document.getElementById('room-state').textContent = history ? 'Selected room' : selectedRoomState;
+			if (!history) document.getElementById('room-db').innerHTML = `${selectedRoomLevel} <small>dB</small>`;
+			else updateHistorySummary(document.querySelector('.range-button.active').dataset.range);
+			document.getElementById('activity-mode').disabled = history || thresholdMode === 'manual';
+			document.getElementById('threshold-slider').disabled = history;
+			document.querySelectorAll('.mode-button, #reset-mode').forEach((control) => control.disabled = history);
+			document.getElementById('control-hint').textContent = history ? 'Review mode · return to Live to change' : thresholdMode === 'adaptive' ? `Suggested for ${document.getElementById('activity-mode').selectedOptions[0].text.toLowerCase()}` : 'Manual limit; AI recommendation paused';
+			document.querySelector('.rooms-panel .panel-kicker').textContent = 'LIVE SNAPSHOT';
+			document.querySelector('.rooms-panel').classList.toggle('historical-context', history);
+			showToast(history ? 'Historical summary selected' : 'Live monitoring selected');
+		}));
+		document.getElementById('mute-button').addEventListener('click', (event) => {
+			const muted = event.currentTarget.classList.toggle('muted');
+			event.currentTarget.querySelector('span:last-child').textContent = muted ? 'Unmute' : 'Mute';
+			showToast(muted ? 'Alert sounds muted' : 'Alert sounds enabled');
+		});
+		document.getElementById('export-button').addEventListener('click', () => {
+			const rows = Array.from(document.querySelectorAll('.classroom-row'), (row) => `${row.dataset.room},${row.dataset.level},${row.querySelector('.status-pill').textContent.trim()}`);
+			const csv = ['Room,Sound level (dB),Status', ...rows].join('\n');
+			const link = document.createElement('a');
+			link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+			link.download = 'hushline-classroom-report.csv';
+			link.click();
+			URL.revokeObjectURL(link.href);
+			showToast('Classroom report exported');
+		});
+		document.querySelector('.change-activity').addEventListener('click', () => showToast('Activity settings are up to date'));
+		document.querySelector('.add-room').addEventListener('click', () => showToast('Room setup is available to campus admins'));
+		document.querySelector('.notification-button').addEventListener('click', () => showToast('You’re all caught up on notifications'));
+		document.querySelectorAll('.alert-chevron, .settings-arrow').forEach((button) => button.addEventListener('click', () => showToast('Details opened in the dashboard')));
+		document.querySelectorAll('.nav-link').forEach((link) => link.addEventListener('click', () => document.querySelectorAll('.nav-link').forEach((item) => item.classList.toggle('active', item === link))));
+		setInterval(() => {
+			document.getElementById('campus-db').textContent = 46 + Math.round(Math.random() * 4 - 2);
+			document.querySelector('.updated-time').textContent = 'Updated just now';
+		}, 6500);
+	</script>
+</body>
+</html>
