@@ -1,0 +1,57 @@
+# ml/.gitignore  (ML-specific rules, scoped to the ml/ folder only)
+# Whether the repository also needs a root-level .gitignore is TBD (team),
+# because it would affect other members' folders.
+#
+# Data folder convention:
+#   data/external/  = downloaded third-party datasets and third-party metadata (never committed)
+#   data/metadata/  = our own project metadata CSVs (committable if they contain no private
+#                     audio or personal information)
+
+# Audio and video (private recordings, public-dataset audio, ClassBank video)
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.opus
+*.m4a
+*.aac
+*.aiff
+*.wma
+*.mp4
+*.m4v
+*.mov
+*.mkv
+*.avi
+*.webm
+
+# Downloaded dataset archives
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+
+# Everything under data/ stays out of Git, except folder placeholders and our own metadata CSVs
+data/**
+!data/**/
+!data/**/.gitkeep
+!data/metadata/*.csv
+
+# Regenerable ML arrays
+*.npy
+*.npz
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.ipynb_checkpoints/
+.pytest_cache/
