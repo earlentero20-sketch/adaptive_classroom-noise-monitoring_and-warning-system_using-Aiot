@@ -1,0 +1,44 @@
+{
+  "config_version": 1,
+  "dataset_root": "../data/experimental_demo",
+  "metadata_csv": "metadata/classroom_metadata.csv",
+  "artifact_directory": "../artifacts/experimental-demo",
+  "split": {
+    "seed": 73,
+    "fractions": {
+      "train": 0.7,
+      "validation": 0.15,
+      "test": 0.15
+    }
+  },
+  "preprocessing": {
+    "target_sample_rate_hz": 16000,
+    "target_duration_seconds": 1.0,
+    "channel_mix": "mean",
+    "resampling_method": "linear",
+    "clip_strategy": "center",
+    "normalization": "none"
+  },
+  "feature_extractor": {
+    "name": "librosa-mfcc-mean-std",
+    "config": {
+      "sample_rate_hz": 16000,
+      "channel_handling": "preprocessed_mono",
+      "n_mfcc": 20,
+      "n_mels": 40,
+      "n_fft": 400,
+      "win_length": 400,
+      "hop_length": 160,
+      "window": "hann",
+      "fmin_hz": 0.0,
+      "fmax_hz": 7600.0,
+      "center": false,
+      "power": 2.0,
+      "aggregation": "mean_std"
+    }
+  },
+  "logistic_regression": {
+    "regularization_c": 1.0,
+    "max_iterations": 2000
+  }
+}

@@ -1,5 +1,13 @@
 # Public Dataset Sources: Research and Shortlist
 
+> **Current scope note:** The active ML requirement is now exactly two classes:
+> `Teacher Discussion` and `Student Conversation`. The five-class assessment
+> and recommendations below are historical and must not be used as the
+> current label mapping. Reassess candidate sources specifically for
+> teacher-led classroom discussion and student-to-student conversation before
+> any data is approved for use. See
+> [TWO_CLASS_ML_AND_WARNING_PLAN.md](TWO_CLASS_ML_AND_WARNING_PLAN.md).
+
 **Owner:** Earl Entero (ML / Data Engineer)
 **Phase:** 2 — Dataset Collection and Labeling (research and planning only)
 **Status:** Draft for review. **No dataset, audio, or metadata file has been downloaded.**

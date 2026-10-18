@@ -2,10 +2,8 @@
 # Whether the repository also needs a root-level .gitignore is TBD (team),
 # because it would affect other members' folders.
 #
-# Data folder convention:
-#   data/external/  = downloaded third-party datasets and third-party metadata (never committed)
-#   data/metadata/  = our own project metadata CSVs (committable if they contain no private
-#                     audio or personal information)
+# Dataset audio and private metadata belong under data/ and stay out of Git.
+# CSV exceptions are limited to shareable, header-only schema examples.
 
 # Audio and video (private recordings, public-dataset audio, ClassBank video)
 *.wav
@@ -31,15 +29,19 @@
 *.tgz
 *.7z
 
-# Everything under data/ stays out of Git, except folder placeholders and our own metadata CSVs
+# Everything under data/ stays out of Git, except folder placeholders and schema examples.
 data/**
 !data/**/
 !data/**/.gitkeep
-!data/metadata/*.csv
+!data/metadata/classroom_metadata.example.csv
+!data/metadata/classroom_recording_log.example.csv
 
 # Regenerable ML arrays
 *.npy
 *.npz
+
+# Generated models and run reports (created only after an approved real-data run)
+artifacts/
 
 # Secrets
 .env
