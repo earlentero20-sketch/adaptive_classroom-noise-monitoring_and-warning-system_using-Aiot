@@ -44,6 +44,7 @@ def run_local_demo(
     config_path: str | Path,
     artifact_directory: str | Path,
     acknowledge_local_only_unreviewed_demo: bool,
+    reuse_existing_demo_dataset: bool = False,
 ) -> dict[str, Any]:
     if acknowledge_local_only_unreviewed_demo is not True:
         raise ValueError("explicit acknowledgement of local-only, unreviewed demo fitting is required")
@@ -55,7 +56,8 @@ def run_local_demo(
     log_source = (project_root / "ml/data/metadata/classroom_recording_log.csv").resolve()
     dataset_root = (project_root / "ml/data/experimental_demo").resolve()
     artifact_root = Path(artifact_directory).resolve()
-    if dataset_root.exists():
+    dataset_exists = dataset_root.exists()
+    if dataset_exists and not reuse_existing_demo_dataset:
         raise FileExistsError(f"local demo dataset already exists; refusing to overwrite: {dataset_root}")
     if artifact_root.exists():
         raise FileExistsError(f"local demo artifact directory already exists; refusing to overwrite: {artifact_root}")
@@ -87,19 +89,25 @@ def run_local_demo(
         if filename not in logs_by_recording:
             raise ValueError(f"recording log has no matching entry for {filename}")
 
-    # Copy only. Existing metadata and log are byte-for-byte copies; no review
-    # status, evidence reference, or source file is changed.
     audio_root = dataset_root / "audio/recordings"
     metadata_root = dataset_root / "metadata"
-    audio_root.mkdir(parents=True)
-    metadata_root.mkdir(parents=True)
-    for filename in DEMO_LABELS:
-        shutil.copy2(original_root / rows_by_clip[filename]["relative_path"], audio_root / filename)
-        copied_info = validate_audio_file(audio_root / filename)
-        if copied_info != source_info[filename]:
-            raise ValueError(f"copy validation differs from source for {filename}")
-    shutil.copy2(metadata_source, metadata_root / "classroom_metadata.csv")
-    shutil.copy2(log_source, metadata_root / "classroom_recording_log.csv")
+    if dataset_exists:
+        _verify_existing_demo_dataset(
+            dataset_root, audio_root, metadata_root, original_root,
+            metadata_source, log_source, rows_by_clip, source_info,
+        )
+    else:
+        # Copy only. Metadata and log are byte-for-byte copies; no review
+        # status, evidence reference, or source file is changed.
+        audio_root.mkdir(parents=True)
+        metadata_root.mkdir(parents=True)
+        for filename in DEMO_LABELS:
+            shutil.copy2(original_root / rows_by_clip[filename]["relative_path"], audio_root / filename)
+            copied_info = validate_audio_file(audio_root / filename)
+            if copied_info != source_info[filename]:
+                raise ValueError(f"copy validation differs from source for {filename}")
+        shutil.copy2(metadata_source, metadata_root / "classroom_metadata.csv")
+        shutil.copy2(log_source, metadata_root / "classroom_recording_log.csv")
 
     preprocessing = PreprocessingConfig(**config["preprocessing"])
     feature_config = MFCCConfig(**config["feature_extractor"]["config"])
@@ -209,6 +217,41 @@ def _read_csv(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(source))
 
 
+def _verify_existing_demo_dataset(
+    dataset_root: Path,
+    audio_root: Path,
+    metadata_root: Path,
+    original_root: Path,
+    metadata_source: Path,
+    log_source: Path,
+    rows_by_clip: dict[str, dict[str, str]],
+    source_info: dict[str, Any],
+) -> None:
+    expected_audio = set(DEMO_LABELS)
+    if not audio_root.is_dir() or {path.name for path in audio_root.glob("*.wav")} != expected_audio:
+        raise ValueError("existing demo dataset does not contain exactly the four expected WAV copies")
+    for filename in DEMO_LABELS:
+        copied = audio_root / filename
+        source = original_root / rows_by_clip[filename]["relative_path"]
+        if _sha256_file(copied) != _sha256_file(source):
+            raise ValueError(f"existing demo audio differs from the preserved original: {filename}")
+        if validate_audio_file(copied) != source_info[filename]:
+            raise ValueError(f"existing demo audio no longer passes PCM WAV validation: {filename}")
+    copies = (
+        (metadata_root / "classroom_metadata.csv", metadata_source),
+        (metadata_root / "classroom_recording_log.csv", log_source),
+    )
+    for copied, source in copies:
+        if not copied.is_file() or _sha256_file(copied) != _sha256_file(source):
+            raise ValueError(f"existing demo metadata copy differs from its source: {copied.name}")
+    manifest_path = dataset_root / "local_demo_manifest.json"
+    if not manifest_path.is_file():
+        raise ValueError("existing demo dataset has no local demo manifest")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if manifest.get("run_mode") != "local_only_unreviewed_demo":
+        raise ValueError("existing dataset is not marked as a local-only unreviewed demo")
+
+
 def group_id_from_row(row: dict[str, str]) -> str:
     return json.dumps((row["source_id"], row["original_recording_id"]), separators=(",", ":"))
 
@@ -230,12 +273,14 @@ def main() -> int:
     parser.add_argument("--config", default="ml/config/experimental-demo.json")
     parser.add_argument("--artifact-directory", default="ml/artifacts/experimental-demo-local")
     parser.add_argument("--acknowledge-local-only-unreviewed-demo", action="store_true", required=True)
+    parser.add_argument("--reuse-existing-demo-dataset", action="store_true")
     args = parser.parse_args()
     try:
         result = run_local_demo(
             config_path=args.config,
             artifact_directory=args.artifact_directory,
             acknowledge_local_only_unreviewed_demo=args.acknowledge_local_only_unreviewed_demo,
+            reuse_existing_demo_dataset=args.reuse_existing_demo_dataset,
         )
     except (KeyError, TypeError, ValueError, RuntimeError, OSError, AttributeError) as error:
         print(f"local experimental demo refused/failed: {error}", file=sys.stderr)

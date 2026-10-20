@@ -35,6 +35,8 @@ test("dashboard loads the current cache-busted backend adapter and its styles", 
 	const html = await readFile(new URL("./index.html", import.meta.url), "utf8");
 	assert.match(html, /<script type="module" src="backend-adapter\.mjs\?v=audio-inference"><\/script>/);
 	assert.match(html, /<link rel="stylesheet" href="backend-adapter\.css">/);
+	const adapter = await readFile(new URL("./backend-adapter.mjs", import.meta.url), "utf8");
+	assert.match(adapter, /data-demo-threshold type="number" min="0" step="any" value="75"/);
 });
 
 test("health response distinguishes reachable service from unready warning settings", () => {
@@ -124,27 +126,27 @@ test("sample request is explicitly empty and consumes backend response", async (
 test("demo policy triggers only for simulated student conversation above a fresh calibrated threshold", () => {
 	const result = evaluateDemoWarning({
 		classification: "Student Conversation",
-		soundLevel: "71",
-		threshold: "70",
+		soundLevel: "76",
+		threshold: "75",
 		measurementState: "fresh_calibrated",
 	});
 	assert.deepEqual(result, { triggered: true, reason: "student_conversation_above_threshold", simulated: true });
 	assert.equal(evaluateDemoWarning({
 		classification: "Teacher Discussion",
 		soundLevel: "99",
-		threshold: "70",
+		threshold: "75",
 		measurementState: "fresh_calibrated",
 	}).triggered, false);
 });
 
 test("demo policy uses a strict threshold comparison and refuses invalid threshold settings", () => {
 	for (const [soundLevel, threshold, reason] of [
-		["70", "70", "below_threshold"],
-		["69", "70", "below_threshold"],
-		["71", "", "threshold_unconfigured"],
-		["71", "0", "threshold_invalid"],
-		["not-a-number", "70", "sound_level_invalid"],
-		["", "70", "sound_level_unavailable"],
+		["75", "75", "below_threshold"],
+		["74", "75", "below_threshold"],
+		["76", "", "threshold_unconfigured"],
+		["76", "0", "threshold_invalid"],
+		["not-a-number", "75", "sound_level_invalid"],
+		["", "75", "sound_level_unavailable"],
 	]) {
 		const result = evaluateDemoWarning({
 			classification: "Student Conversation",
@@ -177,7 +179,7 @@ test("demo policy never warns for stale, unavailable, invalid, or uncalibrated r
 	assert.equal(evaluateDemoWarning({
 		classification: null,
 		soundLevel: "99",
-		threshold: "70",
+		threshold: "75",
 		measurementState: "fresh_calibrated",
 	}).triggered, false);
 });

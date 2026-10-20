@@ -256,7 +256,7 @@ function mountPanel() {
 		<p class="backend-check-note">The dashboard values above are simulated sample data. This panel shows actual local-backend responses, not simulated API responses. Its empty sample request contains no audio or sensor readings.</p>
 		<section class="backend-check-demo" aria-labelledby="backend-demo-title">
 			<div class="backend-check-demo-heading"><span class="backend-check-mode">DEMO MODE</span><h3 id="backend-demo-title">Warning policy simulation</h3></div>
-			<p class="backend-check-demo-note">Simulated inputs only; no trained model, microphone, ESP32 connection, or buzzer. Enter a team-approved demo threshold; none is preset.</p>
+			<p class="backend-check-demo-note">Simulated inputs only; no trained model, microphone, ESP32 connection, or buzzer. The local demo threshold is preset to 75 dB SPL.</p>
 			<label>Selected class (simulated)
 				<select data-demo-class>
 					<option>Teacher Discussion</option>
@@ -265,7 +265,7 @@ function mountPanel() {
 			</label>
 			<div class="backend-check-demo-fields">
 				<label>Sound level (simulated dB SPL)<input data-demo-level type="number" step="any" placeholder="Enter demo reading"></label>
-				<label>Warning threshold (dB SPL)<input data-demo-threshold type="number" min="0" step="any" placeholder="Team-approved value"></label>
+				<label>Warning threshold (dB SPL)<input data-demo-threshold type="number" min="0" step="any" value="75"></label>
 			</div>
 			<label>Measurement scenario (simulated)
 				<select data-demo-measurement>
