@@ -11,6 +11,7 @@ import ipaddress
 import json
 import math
 import os
+import time
 from numbers import Real
 from typing import Any
 from urllib.parse import urlsplit
@@ -27,12 +28,18 @@ from ml.warning_policy import (
     WarningDecision,
     evaluate_warning,
 )
+from backend.postgres_event_repository import (
+    DuplicateEventError,
+    EventStorageError,
+    PostgresEventRepository,
+)
 
 
 SCHEMA_VERSION = "1.0"
 SOUND_LEVEL_UNIT = "dB_SPL"
 SENSOR_STATUSES = ("online", "offline", "unknown")
 MAX_AUDIO_REQUEST_BYTES = 32 * 1024 * 1024
+MAX_EVENT_REQUEST_BYTES = 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -52,6 +59,20 @@ class BackendConfig:
 
 class RequestError(ValueError):
     """An event does not match the versioned request contract."""
+
+
+def _request_content_length(headers: Any) -> int:
+    """Return one strict decimal Content-Length without reading the body."""
+    values = headers.get_all("Content-Length", [])
+    if len(values) != 1:
+        raise RequestError("exactly one Content-Length header is required")
+    raw_value = values[0]
+    if not raw_value or len(raw_value) > 20 or not raw_value.isascii() or not raw_value.isdigit():
+        raise RequestError("Content-Length must be a non-negative decimal integer")
+    try:
+        return int(raw_value)
+    except ValueError as error:
+        raise RequestError("Content-Length is invalid") from error
 
 
 def process_event(
@@ -176,6 +197,8 @@ def _parse_classification(value: Any) -> dict[str, Any]:
     confident = record.get("confident", False)
     if type(confident) is not bool:
         raise RequestError("classification.confident must be a boolean")
+    if label is None:
+        confident = False
     observed_at = _optional_datetime(record.get("observed_at"), "classification.observed_at")
     return {"label": label, "confident": confident, "observed_at": observed_at}
 
@@ -193,6 +216,8 @@ def _parse_sound_level(value: Any) -> dict[str, Any]:
     calibrated = record.get("calibrated", False)
     if type(calibrated) is not bool:
         raise RequestError("sound_level.calibrated must be a boolean")
+    if reading is None:
+        calibrated = False
     observed_at = _optional_datetime(record.get("observed_at"), "sound_level.observed_at")
     return {
         "value": float(reading) if reading is not None else None,
@@ -352,6 +377,34 @@ class BackendHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
 
+    def _discard_bounded_request_body(self, maximum_bytes: int) -> None:
+        """Drain a rejected body only within byte and total-time limits."""
+        try:
+            content_length = _request_content_length(self.headers)
+        except RequestError:
+            self.close_connection = True
+            return
+        self.close_connection = True
+        if content_length > maximum_bytes:
+            return
+
+        deadline = time.monotonic() + 0.25
+        remaining = content_length
+        original_timeout = self.connection.gettimeout()
+        try:
+            while remaining:
+                timeout = deadline - time.monotonic()
+                if timeout <= 0:
+                    return
+                self.connection.settimeout(timeout)
+                chunk = self.rfile.read1(min(remaining, 64 * 1024))
+                if not chunk:
+                    return
+                remaining -= len(chunk)
+        except TimeoutError:
+            return
+        finally:
+            self.connection.settimeout(original_timeout)
     def do_POST(self) -> None:
         if self.path == "/api/v1/classify":
             self._classify_audio()
@@ -360,6 +413,7 @@ class BackendHandler(BaseHTTPRequestHandler):
             self._send_json(404, {"error": {"code": "not_found"}})
             return
         if self.headers.get_content_type() != "application/json":
+            self._discard_bounded_request_body(MAX_EVENT_REQUEST_BYTES)
             self._send_json(415, {
                 "schema_version": SCHEMA_VERSION,
                 "error": {"code": "unsupported_media_type"},
@@ -368,10 +422,18 @@ class BackendHandler(BaseHTTPRequestHandler):
             })
             return
         try:
-            content_length = int(self.headers.get("Content-Length", "-1"))
-            if content_length < 0:
-                raise RequestError("Content-Length is required")
+            content_length = _request_content_length(self.headers)
+            if content_length > MAX_EVENT_REQUEST_BYTES:
+                self._send_json(413, {
+                    "schema_version": SCHEMA_VERSION,
+                    "error": {"code": "event_too_large"},
+                    "connection_status": {"backend": "online", "sensor": "unknown"},
+                    "warning": {"triggered": False, "reason": "invalid_event"},
+                })
+                return
             raw_body = self.rfile.read(content_length)
+            if len(raw_body) != content_length:
+                raise RequestError("request body is incomplete")
             payload = json.loads(raw_body)
             response = process_event(payload, self.server.backend_config)
         except (RequestError, json.JSONDecodeError, UnicodeDecodeError) as error:
@@ -390,6 +452,36 @@ class BackendHandler(BaseHTTPRequestHandler):
                 "warning": {"triggered": False, "reason": "invalid_event"},
             })
             return
+        repository = getattr(self.server, "event_repository", None)
+        if repository is None:
+            self._send_json(503, {
+                "schema_version": SCHEMA_VERSION,
+                "error": {"code": "storage_unavailable"},
+            })
+            return
+        try:
+            repository.save_event(response)
+        except DuplicateEventError:
+            # Provisional mapping pending agreement in the API contract.
+            self._send_json(409, {
+                "schema_version": SCHEMA_VERSION,
+                "error": {"code": "duplicate_event"},
+            })
+            return
+        except EventStorageError:
+            # Never acknowledge an event that failed to commit.
+            self._send_json(503, {
+                "schema_version": SCHEMA_VERSION,
+                "error": {"code": "storage_unavailable"},
+            })
+            return
+        except Exception:
+            # Keep unexpected repository details out of the HTTP response.
+            self._send_json(503, {
+                "schema_version": SCHEMA_VERSION,
+                "error": {"code": "storage_unavailable"},
+            })
+            return
         self._send_json(200, response)
 
     def _classify_audio(self) -> None:
@@ -402,13 +494,14 @@ class BackendHandler(BaseHTTPRequestHandler):
             self._send_json(403, {"error": {"code": "loopback_only"}})
             return
         if self.headers.get_content_type() != "audio/wav":
+            self._discard_bounded_request_body(MAX_AUDIO_REQUEST_BYTES)
             self._send_json(415, {"error": {"code": "unsupported_media_type"}})
             return
         try:
             try:
-                content_length = int(self.headers.get("Content-Length", "-1"))
-            except ValueError as error:
-                raise InvalidAudioSample("Content-Length must be a positive integer") from error
+                content_length = _request_content_length(self.headers)
+            except RequestError as error:
+                raise InvalidAudioSample(str(error)) from error
             if content_length <= 0:
                 raise InvalidAudioSample("Content-Length must describe a non-empty WAV sample")
             if content_length > MAX_AUDIO_REQUEST_BYTES:
@@ -457,11 +550,15 @@ class BackendHandler(BaseHTTPRequestHandler):
                 "warning_evaluation": {"status": "not_performed"},
                 "connection_status": {"backend": "online", "hardware": "not_tested"},
             })
-        except (KeyError, TypeError, ValueError, RuntimeError) as error:
+        except Exception:
+            # Unexpected inference details can contain local paths or internals.
             self._send_json(503, {
                 "inference": {"status": "unavailable"},
                 "model_status": "inference_error",
-                "error": {"code": "inference_unavailable", "message": str(error)},
+                "error": {
+                    "code": "inference_unavailable",
+                    "message": "audio inference failed",
+                },
                 "warning_evaluation": {"status": "not_performed"},
                 "connection_status": {"backend": "online", "hardware": "not_tested"},
             })
@@ -503,10 +600,16 @@ def _is_loopback_origin(origin: str) -> bool:
 
 class ConfiguredHTTPServer(HTTPServer):
     def __init__(
-        self, address: tuple[str, int], config: BackendConfig, *, audio_model: Any = None
+        self,
+        address: tuple[str, int],
+        config: BackendConfig,
+        *,
+        audio_model: Any = None,
+        event_repository: Any = None,
     ):
         self.backend_config = config
         self.audio_model = audio_model
+        self.event_repository = event_repository
         super().__init__(address, BackendHandler)
 
 
@@ -521,16 +624,22 @@ def main() -> None:
         raise SystemExit("BACKEND_PORT must be between 1 and 65535") from error
 
     config = BackendConfig.from_environment()
-    with ConfiguredHTTPServer((host, port), config) as server:
-        print(f"SONIQ backend listening at http://{host}:{port}")
-        configuration = _warning_configuration(config)
-        if configuration["warning_configuration_status"] != "ready":
-            reasons = ", ".join(configuration["warning_configuration_reasons"])
-            print(f"warning configuration is not ready ({reasons}); buzzer decisions stay off")
-        try:
-            server.serve_forever()
-        except KeyboardInterrupt:
-            print("\nStopping SONIQ backend")
+    repository = PostgresEventRepository.from_environment()
+    try:
+        with ConfiguredHTTPServer(
+            (host, port), config, event_repository=repository
+        ) as server:
+            print(f"SONIQ backend listening at http://{host}:{port}")
+            configuration = _warning_configuration(config)
+            if configuration["warning_configuration_status"] != "ready":
+                reasons = ", ".join(configuration["warning_configuration_reasons"])
+                print(f"warning configuration is not ready ({reasons}); buzzer decisions stay off")
+            try:
+                server.serve_forever()
+            except KeyboardInterrupt:
+                print("\nStopping SONIQ backend")
+    finally:
+        repository.close()
 
 
 if __name__ == "__main__":
