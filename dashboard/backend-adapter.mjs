@@ -250,10 +250,11 @@ function mountPanel() {
 	panel.setAttribute("aria-labelledby", "backend-check-title");
 	panel.innerHTML = `
 		<div class="backend-check-heading">
-			<div><span class="backend-check-kicker">LOCAL INTEGRATION</span><h2 id="backend-check-title">Backend contract check</h2></div>
-			<span class="backend-check-mode">SAMPLE DATA / NO HARDWARE</span>
+			<div class="backend-check-heading-copy"><span class="backend-check-kicker">LOCAL INTEGRATION</span><h2 id="backend-check-title">Backend contract check</h2></div>
+			<button class="backend-check-toggle" type="button" aria-expanded="false" aria-controls="backend-check-content"><span data-toggle-label>Expand panel</span><span class="backend-check-toggle-indicator" aria-hidden="true">+</span></button>
 		</div>
-		<p class="backend-check-note">The dashboard values above are simulated sample data. This panel shows actual local-backend responses, not simulated API responses. Its empty sample request contains no audio or sensor readings.</p>
+		<div class="backend-check-summary"><span class="backend-check-mode">SAMPLE DATA / NO HARDWARE</span><p class="backend-check-note">The dashboard values above are simulated sample data. This panel shows actual local-backend responses, not simulated API responses. Its empty sample request contains no audio or sensor readings.</p></div>
+		<div class="backend-check-content" id="backend-check-content" hidden>
 		<section class="backend-check-demo" aria-labelledby="backend-demo-title">
 			<div class="backend-check-demo-heading"><span class="backend-check-mode">DEMO MODE</span><h3 id="backend-demo-title">Warning policy simulation</h3></div>
 			<p class="backend-check-demo-note">Simulated inputs only; no trained model, microphone, ESP32 connection, or buzzer. The local demo threshold is preset to 75 dB SPL.</p>
@@ -309,8 +310,16 @@ function mountPanel() {
 			<div><dt>Sound level</dt><dd data-field="sound-level"></dd></div>
 			<div><dt>Warning</dt><dd data-field="warning"></dd></div>
 			<div><dt>Reason</dt><dd data-field="reason"></dd></div>
-		</dl>`;
-	document.body.append(panel);
+		</dl>
+		</div>`;
+	const contentHost = document.querySelector(".content-wrap") || document.querySelector(".main-content") || document.body;
+	contentHost.append(panel);
+	const panelToggle = panel.querySelector(".backend-check-toggle");
+	const panelContent = panel.querySelector("#backend-check-content");
+	panelToggle.addEventListener("click", () => {
+		const expanded = panelToggle.getAttribute("aria-expanded") !== "true";
+		setPanelExpanded(panelToggle, panelContent, expanded);
+	});
 	const status = panel.querySelector("[data-status]");
 	const configuration = panel.querySelector("[data-config]");
 	const responseLabel = panel.querySelector("[data-response-label]");
@@ -405,6 +414,13 @@ function mountPanel() {
 		}
 		setBusy(false);
 	});
+}
+
+export function setPanelExpanded(toggle, content, expanded) {
+	toggle.setAttribute("aria-expanded", String(expanded));
+	content.hidden = !expanded;
+	toggle.querySelector("[data-toggle-label]").textContent = expanded ? "Collapse panel" : "Expand panel";
+	toggle.querySelector(".backend-check-toggle-indicator").textContent = expanded ? "−" : "+";
 }
 
 if (typeof document !== "undefined") mountPanel();

@@ -37,19 +37,19 @@
 		</aside>
 
 		<main class="main-content" id="overview">
-			<header class="topbar"><div class="breadcrumb"><span>North Wing</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5"/></svg><strong>Overview</strong></div><div class="topbar-actions"><span class="demo-badge">PROTOTYPE / SAMPLE DATA</span><span class="last-updated"><span class="live-pip"></span>Live <span class="updated-time">Updated just now</span></span><button class="top-icon" aria-label="Search" title="Search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m16 16 4.5 4.5"/></svg></button><button class="top-icon notification-button" aria-label="Notifications" title="Notifications"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><i></i></button></div></header>
+		<header class="topbar"><div class="breadcrumb"><span>North Wing</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5"/></svg><strong>Overview</strong></div><div class="topbar-actions"><span class="demo-badge">PROTOTYPE / SAMPLE DATA</span><span class="last-updated">Simulated data <span class="updated-time">Campus sound number refreshes every 6.5 seconds</span></span><button class="top-icon" aria-label="Search" title="Search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3"/><path d="m16 16 4.5 4.5"/></svg></button><button class="top-icon notification-button" aria-label="Notifications" title="Notifications"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg><i></i></button></div></header>
 			<div class="content-wrap">
 				<section class="page-heading"><div><div class="eyebrow"><span class="eyebrow-line"></span><span id="current-date"></span></div><h1>Good morning, Alex<span class="heading-period">.</span></h1><p class="heading-subtitle">Prototype dashboard — sample readings only while hardware and final ML work are still being developed.</p></div><button class="export-button" id="export-button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3"/></svg><span>Export prototype report</span></button></section>
 
-				<section class="view-switch" aria-label="Dashboard view"><div><strong>Monitoring view</strong><span id="view-description">Live classroom conditions</span></div><div class="segmented view-tabs" role="tablist" aria-label="Monitoring view"><button class="view-tab active" id="live-tab" role="tab" aria-selected="true" data-view="live">Live</button><button class="view-tab" id="history-tab" role="tab" aria-selected="false" data-view="history">History</button></div></section>
+				<section class="view-switch" aria-label="Dashboard view"><div><strong>Monitoring view</strong><span id="view-description">Live classroom conditions</span></div><div class="segmented view-tabs" role="tablist" aria-label="Monitoring view"><button class="view-tab active" id="live-tab" type="button" role="tab" aria-selected="true" aria-controls="live-summary" tabindex="0" data-view="live">Live</button><button class="view-tab" id="history-tab" type="button" role="tab" aria-selected="false" aria-controls="history-summary" tabindex="-1" data-view="history">History</button></div></section>
 
-				<section class="summary-grid live-summary" aria-label="Live campus sound summary">
+				<section class="summary-grid live-summary" id="live-summary" role="tabpanel" aria-labelledby="live-tab" tabindex="0" aria-label="Live campus sound summary">
 					<article class="summary-card"><div class="card-topline"><span class="metric-label">CAMPUS SOUND LEVEL</span><span class="metric-icon sound-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10v4h4l5 4V6l-5 4H3ZM16 9a5 5 0 0 1 0 6M18.5 6.5a9 9 0 0 1 0 11"/></svg></span></div><div class="metric-value-row"><strong class="metric-value" id="campus-db">46</strong><span class="metric-unit">dB</span><span class="change-pill positive">↘ 8%</span></div><div class="metric-foot"><span>vs. previous hour</span><span class="mini-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></div></article>
 					<article class="summary-card"><div class="card-topline"><span class="metric-label">CLASSROOMS ON TRACK</span><span class="metric-icon track-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/><circle cx="12" cy="12" r="9"/></svg></span></div><div class="metric-value-row"><strong class="metric-value">5</strong><span class="metric-unit">of 6</span></div><div class="metric-foot"><span>One room needs attention</span><span class="metric-emphasis">83%</span></div><div class="progress-line"><span></span></div></article>
 					<article class="summary-card"><div class="card-topline"><span class="metric-label">ACTIVE ALERTS</span><span class="metric-icon alert-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2.8 19h18.4L12 3Z"/><path d="M12 9v4m0 3h.01"/></svg></span></div><div class="metric-value-row"><strong class="metric-value">2</strong><span class="metric-unit">today</span><span class="change-pill alert-change">1 active</span></div><div class="metric-foot"><span>Last alert <strong>10:42 AM</strong></span><a class="alert-text" href="#alerts">View alerts →</a></div></article>
 					<article class="summary-card"><div class="card-topline"><span class="metric-label">AVG. RESPONSE TIME</span><span class="metric-icon time-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span></div><div class="metric-value-row"><strong class="metric-value">1.8</strong><span class="metric-unit">min</span></div><div class="metric-foot"><span>Down from last week</span><span class="change-pill positive">↘ 12%</span></div></article>
 				</section>
-				<section class="summary-grid history-summary" aria-label="Historical sound summary" hidden>
+				<section class="summary-grid history-summary" id="history-summary" role="tabpanel" aria-labelledby="history-tab" tabindex="0" aria-label="Historical sound summary" hidden>
 					<article class="summary-card"><div class="card-topline"><span class="metric-label">AVERAGE SOUND LEVEL</span><span class="metric-icon sound-icon">dB</span></div><div class="metric-value-row"><strong class="metric-value" id="history-average">51</strong><span class="metric-unit">dB</span><span class="change-pill positive">↘ 6%</span></div><div class="metric-foot"><span>vs. previous period</span><span>Campus average</span></div></article>
 					<article class="summary-card"><div class="card-topline"><span class="metric-label">TIME ABOVE LIMIT</span><span class="metric-icon alert-icon">!</span></div><div class="metric-value-row"><strong class="metric-value" id="history-over-limit">18</strong><span class="metric-unit">min</span></div><div class="metric-foot"><span>Across all classrooms</span><span class="metric-emphasis">4% of period</span></div></article>
 					<article class="summary-card"><div class="card-topline"><span class="metric-label">ALERTS TRIGGERED</span><span class="metric-icon track-icon">↗</span></div><div class="metric-value-row"><strong class="metric-value" id="history-alert-count">8</strong><span class="metric-unit">events</span></div><div class="metric-foot"><span id="history-alert-resolution">7 resolved</span><span class="metric-emphasis">1 acknowledged</span></div></article>
@@ -197,13 +197,15 @@
 			if (currentView === 'history') document.getElementById('chart-context').textContent = `${button.dataset.range.toLowerCase()} average`;
 			showToast(`${button.dataset.range} trend selected`);
 		}));
-		document.querySelectorAll('.view-tab').forEach((button) => button.addEventListener('click', () => {
+		const viewTabs = document.querySelectorAll('.view-tab');
+		function selectView(button) {
 			currentView = button.dataset.view;
 			const history = currentView === 'history';
-			document.querySelectorAll('.view-tab').forEach((tab) => {
+			viewTabs.forEach((tab) => {
 				const active = tab === button;
 				tab.classList.toggle('active', active);
 				tab.setAttribute('aria-selected', active);
+				tab.setAttribute('tabindex', active ? '0' : '-1');
 			});
 			document.querySelector('.live-summary').hidden = history;
 			document.querySelector('.history-summary').hidden = !history;
@@ -220,7 +222,23 @@
 			document.querySelector('.rooms-panel .panel-kicker').textContent = 'LIVE SNAPSHOT';
 			document.querySelector('.rooms-panel').classList.toggle('historical-context', history);
 			showToast(history ? 'Historical summary selected' : 'Live monitoring selected');
-		}));
+		}
+		viewTabs.forEach((button, index) => {
+			button.addEventListener('click', () => selectView(button));
+			button.addEventListener('keydown', (event) => {
+				let nextIndex;
+				if (event.key === 'ArrowRight') nextIndex = (index + 1) % viewTabs.length;
+				else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + viewTabs.length) % viewTabs.length;
+				else if (event.key === 'Home') nextIndex = 0;
+				else if (event.key === 'End') nextIndex = viewTabs.length - 1;
+				else return;
+
+				event.preventDefault();
+				const nextTab = viewTabs[nextIndex];
+				nextTab.focus();
+				selectView(nextTab);
+			});
+		});
 		document.getElementById('mute-button').addEventListener('click', (event) => {
 			const muted = event.currentTarget.classList.toggle('muted');
 			event.currentTarget.querySelector('span:last-child').textContent = muted ? 'Unmute' : 'Mute';
@@ -236,14 +254,12 @@
 			URL.revokeObjectURL(link.href);
 			showToast('Classroom report exported');
 		});
-		document.querySelector('.change-activity').addEventListener('click', () => showToast('Activity settings are up to date'));
 		document.querySelector('.add-room').addEventListener('click', () => showToast('Room setup is available to campus admins'));
 		document.querySelector('.notification-button').addEventListener('click', () => showToast('You’re all caught up on notifications'));
 		document.querySelectorAll('.alert-chevron, .settings-arrow').forEach((button) => button.addEventListener('click', () => showToast('Details opened in the dashboard')));
 		document.querySelectorAll('.nav-link').forEach((link) => link.addEventListener('click', () => document.querySelectorAll('.nav-link').forEach((item) => item.classList.toggle('active', item === link))));
 		setInterval(() => {
 			document.getElementById('campus-db').textContent = 46 + Math.round(Math.random() * 4 - 2);
-			document.querySelector('.updated-time').textContent = 'Updated just now';
 		}, 6500);
 	</script>
 	<script type="module" src="backend-adapter.mjs?v=audio-inference"></script>

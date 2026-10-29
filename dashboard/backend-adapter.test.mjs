@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { checkBackend, classifyAudioFile, describeAudioInference, describeEvent, describeHealth, evaluateDemoWarning, sendEmptyContractSample } from "./backend-adapter.mjs";
+import { checkBackend, classifyAudioFile, describeAudioInference, describeEvent, describeHealth, evaluateDemoWarning, sendEmptyContractSample, setPanelExpanded } from "./backend-adapter.mjs";
 
 const emptyResponse = {
 	schema_version: "1.0",
@@ -35,8 +35,91 @@ test("dashboard loads the current cache-busted backend adapter and its styles", 
 	const html = await readFile(new URL("./index.html", import.meta.url), "utf8");
 	assert.match(html, /<script type="module" src="backend-adapter\.mjs\?v=audio-inference"><\/script>/);
 	assert.match(html, /<link rel="stylesheet" href="backend-adapter\.css">/);
+	assert.match(html, /class="last-updated">Simulated data <span class="updated-time">Campus sound number refreshes every 6\.5 seconds<\/span>/);
+	assert.doesNotMatch(html, /Sample values refresh every 6\.5 seconds/);
+	assert.doesNotMatch(html, /Updated just now/);
 	const adapter = await readFile(new URL("./backend-adapter.mjs", import.meta.url), "utf8");
 	assert.match(adapter, /data-demo-threshold type="number" min="0" step="any" value="75"/);
+});
+
+test("dashboard initialization has no stale activity hook and retains later handlers and sample refresh", async () => {
+	const html = await readFile(new URL("./index.html", import.meta.url), "utf8");
+	const inlineScript = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+	assert.ok(inlineScript, "dashboard inline initialization script exists");
+	assert.doesNotMatch(inlineScript, /querySelector\(['"]\.change-activity['"]\)/);
+	assert.match(inlineScript, /document\.querySelector\('\.add-room'\)\.addEventListener/);
+	assert.match(inlineScript, /document\.querySelector\('\.notification-button'\)\.addEventListener/);
+	assert.match(inlineScript, /document\.querySelectorAll\('\.alert-chevron, \.settings-arrow'\)/);
+	assert.match(inlineScript, /document\.querySelectorAll\('\.nav-link'\)/);
+	assert.match(inlineScript, /setInterval\(\(\) => \{/);
+	assert.match(inlineScript, /\}, 6500\);/);
+});
+
+test("Live and History tabs expose linked panels and automatic keyboard navigation", async () => {
+	const html = await readFile(new URL("./index.html", import.meta.url), "utf8");
+	const styles = await readFile(new URL("./colors.css", import.meta.url), "utf8");
+	assert.match(html, /role="tablist" aria-label="Monitoring view"/);
+	assert.match(html, /id="live-tab" type="button" role="tab" aria-selected="true" aria-controls="live-summary" tabindex="0" data-view="live"/);
+	assert.match(html, /id="history-tab" type="button" role="tab" aria-selected="false" aria-controls="history-summary" tabindex="-1" data-view="history"/);
+	assert.match(html, /id="live-summary" role="tabpanel" aria-labelledby="live-tab" tabindex="0"/);
+	assert.match(html, /id="history-summary" role="tabpanel" aria-labelledby="history-tab" tabindex="0"[^>]*hidden/);
+	const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
+	assert.equal(ids.filter((id) => id === "live-tab").length, 1);
+	assert.equal(ids.filter((id) => id === "history-tab").length, 1);
+	assert.equal(ids.filter((id) => id === "live-summary").length, 1);
+	assert.equal(ids.filter((id) => id === "history-summary").length, 1);
+	assert.match(html, /button\.addEventListener\('click', \(\) => selectView\(button\)\)/);
+	assert.match(html, /event\.key === 'ArrowRight'/);
+	assert.match(html, /event\.key === 'ArrowLeft'/);
+	assert.match(html, /event\.key === 'Home'/);
+	assert.match(html, /event\.key === 'End'/);
+	assert.match(html, /tab\.setAttribute\('aria-selected', active\)/);
+	assert.match(html, /tab\.setAttribute\('tabindex', active \? '0' : '-1'\)/);
+	assert.match(html, /document\.querySelector\('\.live-summary'\)\.hidden = history/);
+	assert.match(html, /document\.querySelector\('\.history-summary'\)\.hidden = !history/);
+	assert.match(styles, /button:focus-visible[^}]*outline: 3px solid/);
+});
+
+test("local integration starts collapsed with a visible disclaimer and stable controlled content", async () => {
+	const adapter = await readFile(new URL("./backend-adapter.mjs", import.meta.url), "utf8");
+	const css = await readFile(new URL("./backend-adapter.css", import.meta.url), "utf8");
+	assert.match(adapter, /class="backend-check-toggle" type="button" aria-expanded="false" aria-controls="backend-check-content"/);
+	assert.match(adapter, /id="backend-check-content" hidden/);
+	assert.match(adapter, /SAMPLE DATA \/ NO HARDWARE/);
+	assert.match(adapter, /simulated sample data/);
+	assert.match(adapter, /data-toggle-label>Expand panel/);
+	assert.match(adapter, /backend-check-toggle-indicator[^>]*>\+</);
+	assert.match(adapter, /document\.querySelector\("\.content-wrap"\).*contentHost\.append\(panel\)/s);
+	assert.match(css, /\.backend-check-content\[hidden\] \{ display: none; \}/);
+	assert.match(css, /\.backend-check-panel \{[^}]*width: 100%;[^}]*margin:/);
+	assert.doesNotMatch(css, /\.backend-check-panel \{[^}]*position:\s*fixed/);
+});
+
+test("local integration toggle synchronizes hidden content, ARIA state, label, and indicator", () => {
+	const label = { textContent: "Expand panel" };
+	const indicator = { textContent: "+" };
+	const controls = new Map([
+		["[data-toggle-label]", label],
+		[".backend-check-toggle-indicator", indicator],
+	]);
+	const attributes = new Map([["aria-expanded", "false"]]);
+	const toggle = {
+		setAttribute: (name, value) => attributes.set(name, value),
+		querySelector: (selector) => controls.get(selector),
+	};
+	const content = { hidden: true };
+
+	setPanelExpanded(toggle, content, true);
+	assert.equal(content.hidden, false);
+	assert.equal(attributes.get("aria-expanded"), "true");
+	assert.equal(label.textContent, "Collapse panel");
+	assert.equal(indicator.textContent, "−");
+
+	setPanelExpanded(toggle, content, false);
+	assert.equal(content.hidden, true);
+	assert.equal(attributes.get("aria-expanded"), "false");
+	assert.equal(label.textContent, "Expand panel");
+	assert.equal(indicator.textContent, "+");
 });
 
 test("health response distinguishes reachable service from unready warning settings", () => {
