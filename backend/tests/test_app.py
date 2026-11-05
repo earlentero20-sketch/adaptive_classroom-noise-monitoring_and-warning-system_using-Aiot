@@ -226,6 +226,16 @@ class FakeEventRepository:
             raise self.error
         self.events.append(event)
 
+    def list_events(self, *, limit, offset):
+        if self.error is not None:
+            raise self.error
+        ordered = sorted(
+            self.events,
+            key=lambda event: (event["received_at"], event["event_id"]),
+            reverse=True,
+        )
+        return ordered[offset:offset + limit], len(ordered)
+
 
 class HTTPHandlerTests(unittest.TestCase):
     def setUp(self):
@@ -251,6 +261,9 @@ class HTTPHandlerTests(unittest.TestCase):
             method="POST",
         )
         return urlopen(request)
+
+    def get_events(self, query=""):
+        return urlopen(f"{self.base_url}/api/v1/events{query}")
 
     def test_health_endpoint_returns_structured_status(self):
         with urlopen(f"{self.base_url}/health") as response:
@@ -284,6 +297,129 @@ class HTTPHandlerTests(unittest.TestCase):
         self.assertTrue(body["classification"]["confident"])
         self.assertTrue(body["sound_level"]["calibrated"])
         self.assertEqual(self.repository.events, [body])
+
+    def test_get_events_returns_empty_paginated_response_without_authentication(self):
+        with self.get_events() as response:
+            body = json.loads(response.read())
+        self.assertEqual(response.status, 200)
+        self.assertEqual(body, {
+            "schema_version": "1.0",
+            "events": [],
+            "total": 0,
+            "page": 1,
+            "page_size": 10,
+            "pagination": {
+                "limit": 10,
+                "offset": 0,
+                "total": 0,
+                "has_more": False,
+            },
+        })
+
+    def test_get_events_returns_actual_records_newest_first_and_preserves_null_fields(self):
+        self.repository.events = [
+            {
+                **process_event(event_payload(), self.server.backend_config, now=NOW),
+                "received_at": "2026-10-10T00:00:00Z",
+            },
+            {
+                **process_event(
+                    {
+                        **event_payload(),
+                        "event_id": "event-newer",
+                        "classification": None,
+                        "sound_level": None,
+                    },
+                    self.server.backend_config,
+                    now=NOW,
+                ),
+                "received_at": "2026-10-11T00:00:00Z",
+            },
+        ]
+        with self.get_events() as response:
+            body = json.loads(response.read())
+        self.assertEqual([event["event_id"] for event in body["events"]], [
+            "event-newer", "event-test"
+        ])
+        newest = body["events"][0]
+        self.assertIsNone(newest["classification"]["label"])
+        self.assertIsNone(newest["sound_level"]["value"])
+        self.assertFalse(newest["warning"]["triggered"])
+        self.assertEqual(newest["received_at"], "2026-10-11T00:00:00Z")
+
+    def test_get_events_supports_page_pagination_and_dashboard_limit_offset(self):
+        for index in range(3):
+            event = process_event(
+                {**event_payload(), "event_id": f"event-{index}"},
+                self.server.backend_config,
+                now=NOW,
+            )
+            event["received_at"] = f"2026-10-11T04:00:0{index}Z"
+            self.repository.events.append(event)
+
+        with self.get_events("?page=2&page_size=1") as response:
+            page_body = json.loads(response.read())
+        self.assertEqual(page_body["total"], 3)
+        self.assertEqual(page_body["page"], 2)
+        self.assertEqual(page_body["page_size"], 1)
+        self.assertEqual([event["event_id"] for event in page_body["events"]], ["event-1"])
+        self.assertTrue(page_body["pagination"]["has_more"])
+
+        with self.get_events("?limit=1&offset=2") as response:
+            offset_body = json.loads(response.read())
+        self.assertEqual(offset_body["page"], 3)
+        self.assertEqual(offset_body["page_size"], 1)
+        self.assertEqual([event["event_id"] for event in offset_body["events"]], ["event-0"])
+        self.assertFalse(offset_body["pagination"]["has_more"])
+
+    def test_get_events_rejects_invalid_pagination_parameters(self):
+        for query in (
+            "?page=0",
+            "?page=-1",
+            "?page_size=0",
+            "?page_size=101",
+            "?page_size=large",
+            "?page=1&page=2",
+            "?page=1&limit=10",
+            "?unknown=1",
+        ):
+            with self.subTest(query=query), self.assertRaises(HTTPError) as caught:
+                self.get_events(query)
+            self.assertEqual(caught.exception.code, 400)
+            error_response = caught.exception
+            self.assertEqual(
+                json.loads(error_response.read())["error"]["code"],
+                "invalid_pagination",
+            )
+            error_response.close()
+
+    def test_get_events_maps_database_and_unexpected_failures_to_safe_503(self):
+        for error in (
+            EventStorageError("database unavailable"),
+            RuntimeError("private connection details"),
+        ):
+            self.repository.error = error
+            with self.subTest(error=type(error).__name__), self.assertRaises(HTTPError) as caught:
+                self.get_events()
+            error_response = caught.exception
+            body = error_response.read().decode("utf-8")
+            error_response.close()
+            self.assertEqual(caught.exception.code, 503)
+            self.assertIn('"code":"storage_unavailable"', body)
+            self.assertNotIn("private connection details", body)
+        self.repository.error = None
+
+    def test_get_events_without_repository_returns_safe_503(self):
+        self.server.event_repository = None
+        with self.assertRaises(HTTPError) as caught:
+            self.get_events()
+        self.assertEqual(caught.exception.code, 503)
+        error_response = caught.exception
+        self.assertEqual(
+            json.loads(error_response.read())["error"]["code"],
+            "storage_unavailable",
+        )
+        error_response.close()
 
     def test_null_classification_label_cannot_be_confident(self):
         payload = event_payload()
@@ -495,8 +631,27 @@ class HTTPHandlerTests(unittest.TestCase):
         with urlopen(request) as response:
             self.assertEqual(response.status, 204)
             self.assertEqual(response.headers.get("Access-Control-Allow-Origin"), "http://localhost:8001")
-            self.assertEqual(response.headers.get("Access-Control-Allow-Methods"), "POST, OPTIONS")
+            self.assertEqual(
+                response.headers.get("Access-Control-Allow-Methods"),
+                "GET, POST, OPTIONS",
+            )
             self.assertIsNone(response.headers.get("Content-Length"))
+
+    def test_event_preflight_allows_dashboard_get_requests(self):
+        request = Request(
+            f"{self.base_url}/api/v1/events",
+            headers={
+                "Origin": "http://localhost:8001",
+                "Access-Control-Request-Method": "GET",
+            },
+            method="OPTIONS",
+        )
+        with urlopen(request) as response:
+            self.assertEqual(response.status, 204)
+            self.assertEqual(
+                response.headers.get("Access-Control-Allow-Methods"),
+                "GET, POST, OPTIONS",
+            )
 
     def test_remote_origin_is_not_granted_browser_access(self):
         request = Request(f"{self.base_url}/health", headers={"Origin": "https://example.com"})

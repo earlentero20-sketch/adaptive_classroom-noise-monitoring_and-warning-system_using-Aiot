@@ -4,7 +4,7 @@ The caller remains responsible for request validation, timestamp freshness,
 and warning decisions. This repository only stores the resulting response.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 from typing import Any, Mapping
 
@@ -146,6 +146,80 @@ class PostgresEventRepository:
             # The pool context rolls back failed inserts before this translation.
             raise EventStorageError("could not commit the event to PostgreSQL") from error
 
+    def list_events(
+        self, *, limit: int, offset: int
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Return persisted events newest first and the total matching row count."""
+        if (
+            isinstance(limit, bool)
+            or not isinstance(limit, int)
+            or not 1 <= limit <= 100
+        ):
+            raise ValueError("limit must be an integer between 1 and 100")
+        if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+            raise ValueError("offset must be a non-negative integer")
+
+        try:
+            with self._pool.connection() as connection:
+                with connection.transaction():
+                    connection.execute(
+                        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"
+                    )
+                    total = connection.execute(
+                        "SELECT COUNT(*) FROM events"
+                    ).fetchone()[0]
+                    rows = connection.execute(
+                        """
+                        SELECT event_id, device_id, schema_version, received_at,
+                               sensor_status, classification_label,
+                               classification_confident, classification_observed_at,
+                               classification_status, sound_level_value,
+                               sound_level_unit, sound_level_calibrated,
+                               sound_level_observed_at, sound_level_status,
+                               warning_triggered, warning_reason
+                        FROM events
+                        ORDER BY received_at DESC, event_id ASC
+                        LIMIT %s OFFSET %s
+                        """,
+                        (limit, offset),
+                    ).fetchall()
+        except Exception as error:
+            raise EventStorageError("could not retrieve events from PostgreSQL") from error
+
+        events = [
+            {
+                "schema_version": row[2],
+                "event_id": row[0],
+                "device_id": row[1],
+                "received_at": _format_timestamp(row[3]),
+                "connection_status": {"backend": "online", "sensor": row[4]},
+                "classification": {
+                    "label": row[5],
+                    "confident": row[6],
+                    "observed_at": _format_optional_timestamp(row[7]),
+                    "status": row[8],
+                },
+                "sound_level": {
+                    "value": row[9],
+                    "unit": row[10],
+                    "calibrated": row[11],
+                    "observed_at": _format_optional_timestamp(row[12]),
+                    "status": row[13],
+                },
+                "warning": {"triggered": row[14], "reason": row[15]},
+            }
+            for row in rows
+        ]
+        return events, total
+
     def close(self) -> None:
         """Close this instance's connection pool during service shutdown."""
         self._pool.close()
+
+
+def _format_timestamp(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _format_optional_timestamp(value: datetime | None) -> str | None:
+    return _format_timestamp(value) if value is not None else None

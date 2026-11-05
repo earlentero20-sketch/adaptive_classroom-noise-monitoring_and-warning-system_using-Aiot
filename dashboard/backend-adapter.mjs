@@ -1,6 +1,51 @@
-const BACKEND_URL = "http://127.0.0.1:8000";
+export const DEFAULT_BACKEND_URL = "http://127.0.0.1:8000";
 const VALID_MEASUREMENT_STATUSES = ["fresh", "stale", "unavailable", "unknown", "invalid_time"];
-const DEMO_CLASSES = ["Teacher Discussion", "Student Conversation"];
+const EVENT_CLASSES = ["Teacher Discussion", "Student Conversation"];
+const DEMO_CLASSES = EVENT_CLASSES;
+
+/**
+ * Resolve the backend base URL without hardcoding credentials.
+ *
+ * Priority:
+ * 1. `window.SONIQ_API_BASE_URL` for deployments that inject configuration.
+ * 2. `<meta name="soniq-api-base" content="...">` for static hosting.
+ * 3. `?api=http://127.0.0.1:8000` for local development.
+ * 4. The loopback development default.
+ */
+export function resolveBackendUrl(search = typeof location !== "undefined" ? location.search : "") {
+	let candidate = "";
+	const injected = typeof window !== "undefined" && typeof window.SONIQ_API_BASE_URL === "string"
+		? window.SONIQ_API_BASE_URL.trim()
+		: "";
+	if (injected) {
+		candidate = injected;
+	} else if (typeof document !== "undefined") {
+		const meta = document.querySelector('meta[name="soniq-api-base"]');
+		candidate = meta?.getAttribute("content") || "";
+	}
+	if (!candidate && search) {
+		try {
+			candidate = new URLSearchParams(search).get("api") || "";
+		} catch {
+			candidate = "";
+		}
+	}
+	return normalizeBaseUrl(candidate) || DEFAULT_BACKEND_URL;
+}
+
+function normalizeBaseUrl(value) {
+	if (typeof value !== "string" || !value.trim()) return null;
+	try {
+		const url = new URL(value.trim());
+		if (!["http:", "https:"].includes(url.protocol)) return null;
+		if (url.username || url.password) return null;
+		url.hash = "";
+		url.search = "";
+		return url.toString().replace(/\/$/, "");
+	} catch {
+		return null;
+	}
+}
 
 export function evaluateDemoWarning({ classification, soundLevel, threshold, measurementState }) {
 	const result = (triggered, reason) => ({ triggered, reason, simulated: true });
@@ -67,6 +112,8 @@ export function describeHealth(payload) {
 		ok: true,
 		reachable: true,
 		warningReady: payload.warning_configuration_status === "ready",
+		warningConfigurationStatus: payload.warning_configuration_status,
+		reasons: [...reasons],
 		configurationMessage: payload.warning_configuration_status === "ready"
 			? "Warning configuration: ready. Hardware connection is still unknown."
 			: `Warning configuration: NOT READY (${detail.join("; ")}). Warnings remain disabled.`,
@@ -82,21 +129,24 @@ function validTimestamp(value) {
 	);
 }
 
-export function describeEvent(payload) {
-	if (payload?.error) {
-		return { ok: false, message: `Backend rejected the event: ${payload.error.code || "request error"}.` };
-	}
+/**
+ * Validate one backend event response and return the fields the dashboard
+ * needs. Returns null when the payload does not match the event contract.
+ */
+export function normalizeEventRecord(payload) {
 	if (
 		!payload ||
+		typeof payload !== "object" ||
+		Array.isArray(payload) ||
 		payload.schema_version !== "1.0" ||
 		typeof payload.event_id !== "string" || !payload.event_id.trim() ||
 		typeof payload.device_id !== "string" || !payload.device_id.trim() ||
-		!validTimestamp(payload.received_at) ||
+		typeof payload.received_at !== "string" || !validTimestamp(payload.received_at) ||
 		payload.connection_status?.backend !== "online" ||
 		!["online", "offline", "unknown"].includes(payload.connection_status?.sensor) ||
 		!payload.classification ||
 		!payload.sound_level ||
-		!["Teacher Discussion", "Student Conversation", null].includes(payload.classification?.label) ||
+		(!EVENT_CLASSES.includes(payload.classification?.label) && payload.classification?.label !== null) ||
 		typeof payload.classification?.confident !== "boolean" ||
 		!VALID_MEASUREMENT_STATUSES.includes(payload.classification?.status) ||
 		!validTimestamp(payload.classification?.observed_at) ||
@@ -108,28 +158,56 @@ export function describeEvent(payload) {
 		typeof payload.warning?.triggered !== "boolean" ||
 		typeof payload.warning?.reason !== "string"
 	) {
+		return null;
+	}
+	return {
+		schemaVersion: payload.schema_version,
+		eventId: payload.event_id,
+		deviceId: payload.device_id,
+		receivedAt: payload.received_at,
+		sensorStatus: payload.connection_status.sensor,
+		classificationLabel: payload.classification.label,
+		classificationConfident: payload.classification.confident,
+		classificationStatus: payload.classification.status,
+		classificationObservedAt: payload.classification.observed_at,
+		soundLevelValue: payload.sound_level.value,
+		soundLevelUnit: payload.sound_level.unit,
+		soundLevelCalibrated: payload.sound_level.calibrated,
+		soundLevelStatus: payload.sound_level.status,
+		soundLevelObservedAt: payload.sound_level.observed_at,
+		warningTriggered: payload.warning.triggered,
+		warningReason: payload.warning.reason,
+	};
+}
+
+export function describeEvent(payload) {
+	if (payload?.error) {
+		return { ok: false, message: `Backend rejected the event: ${payload.error.code || "request error"}.` };
+	}
+	const record = normalizeEventRecord(payload);
+	if (!record) {
 		return { ok: false, message: "Backend returned an incomplete event response." };
 	}
 
-	const label = ["Teacher Discussion", "Student Conversation"].includes(payload.classification.label)
-		? payload.classification.label
+	const label = EVENT_CLASSES.includes(record.classificationLabel)
+		? record.classificationLabel
 		: "Unavailable (no model data)";
-	const reading = Number.isFinite(payload.sound_level.value) && payload.sound_level.unit === "dB_SPL"
-		? `${payload.sound_level.value} ${payload.sound_level.unit}`
-		: payload.sound_level.value === null
+	const reading = Number.isFinite(record.soundLevelValue) && record.soundLevelUnit === "dB_SPL"
+		? `${record.soundLevelValue} ${record.soundLevelUnit}`
+		: record.soundLevelValue === null
 			? "Unavailable (no microphone data)"
 			: "Reading provided; unit unavailable (not used for warning)";
-	const sensor = payload.connection_status.sensor === "unknown"
+	const sensor = record.sensorStatus === "unknown"
 		? "unknown (no hardware data)"
-		: `reported ${payload.connection_status.sensor} (not physically verified)`;
+		: `reported ${record.sensorStatus} (not physically verified)`;
 	return {
 		ok: true,
-		backend: payload.connection_status.backend === "online" ? "online" : "unknown",
+		backend: "online",
 		sensor,
 		classification: label,
 		soundLevel: reading,
-		warning: payload.warning.triggered ? "Triggered" : "Not triggered",
-		reason: typeof payload.warning.reason === "string" ? payload.warning.reason : "unspecified",
+		warning: record.warningTriggered ? "Triggered" : "Not triggered",
+		reason: record.warningReason || "unspecified",
 	};
 }
 
@@ -147,7 +225,7 @@ async function fetchJson(url, options, fetchImpl) {
 	return body;
 }
 
-export async function checkBackend(fetchImpl = fetch, baseUrl = BACKEND_URL) {
+export async function checkBackend(fetchImpl = fetch, baseUrl = resolveBackendUrl()) {
 	try {
 		const payload = await fetchJson(`${baseUrl}/health`, undefined, fetchImpl);
 		return describeHealth(payload);
@@ -155,11 +233,127 @@ export async function checkBackend(fetchImpl = fetch, baseUrl = BACKEND_URL) {
 		if (error instanceof BackendResponseError) {
 			return { ok: false, reachable: true, message: error.message };
 		}
-		return { ok: false, message: "Backend unavailable. Start it on 127.0.0.1:8000 and retry." };
+		return { ok: false, message: `Backend unavailable. Start it at ${baseUrl} and retry.` };
 	}
 }
 
-export async function sendEmptyContractSample(fetchImpl = fetch, baseUrl = BACKEND_URL, id = `dashboard-check-${Date.now()}`) {
+/**
+ * Read event history from the backend.
+ *
+ * The current backend does not implement a read/list route, so a 404/405/501
+ * is reported as `state: "unavailable"` rather than as an empty history.
+ * The adapter accepts either a bare JSON array or `{ "events": [...] }` and
+ * optionally `{ "pagination": { "total": n, "has_more": bool } }` so it can be
+ * used as soon as the backend owner publishes the read contract.
+ */
+export async function fetchEvents({ fetchImpl = fetch, baseUrl = resolveBackendUrl(), limit = 10, offset = 0 } = {}) {
+	const safeLimit = Number.isInteger(limit) && limit > 0 ? Math.min(limit, 100) : 10;
+	const safeOffset = Number.isInteger(offset) && offset >= 0 ? offset : 0;
+	let url;
+	try {
+		url = new URL(`${baseUrl}/api/v1/events`);
+	} catch {
+		return { ok: false, state: "error", code: "invalid_base_url", message: "The configured backend URL is invalid." };
+	}
+	url.searchParams.set("limit", String(safeLimit));
+	url.searchParams.set("offset", String(safeOffset));
+
+	let body;
+	try {
+		body = await fetchJson(url.toString(), undefined, fetchImpl);
+	} catch (error) {
+		if (error instanceof BackendResponseError) {
+			if ([404, 405, 501].includes(error.status)) {
+				return {
+					ok: false,
+					state: "unavailable",
+					code: "event_history_unavailable",
+					status: error.status,
+					message: "Event history is unavailable. The backend does not expose GET /api/v1/events.",
+				};
+			}
+			return {
+				ok: false,
+				state: "error",
+				code: "request_error",
+				status: error.status,
+				message: error.message,
+			};
+		}
+		return {
+			ok: false,
+			state: "error",
+			code: "backend_unavailable",
+			message: "Backend unavailable; event history could not be loaded.",
+		};
+	}
+
+	const rawEvents = Array.isArray(body) ? body : Array.isArray(body?.events) ? body.events : null;
+	if (!rawEvents) {
+		return {
+			ok: false,
+			state: "error",
+			code: "invalid_response",
+			message: "Backend returned an event-history response without an events array.",
+		};
+	}
+
+	const events = [];
+	let invalidCount = 0;
+	for (const item of rawEvents) {
+		const record = normalizeEventRecord(item);
+		if (record) events.push(record);
+		else invalidCount += 1;
+	}
+	if (rawEvents.length > 0 && events.length === 0) {
+		return {
+			ok: false,
+			state: "error",
+			code: "invalid_response",
+			message: "Backend returned event records that do not match the event contract.",
+		};
+	}
+
+	const pagination = body?.pagination;
+	const total = Number.isInteger(pagination?.total) ? pagination.total : null;
+	const hasMore = typeof pagination?.has_more === "boolean"
+		? pagination.has_more
+		: total !== null
+			? safeOffset + events.length < total
+			: false;
+	return {
+		ok: true,
+		state: "success",
+		events,
+		invalidCount,
+		pagination: { limit: safeLimit, offset: safeOffset, total, hasMore },
+	};
+}
+
+export function summarizeEvents(events) {
+	const records = Array.isArray(events) ? events : [];
+	const sorted = [...records].sort((left, right) => {
+		const leftTime = Date.parse(left.receivedAt);
+		const rightTime = Date.parse(right.receivedAt);
+		return (Number.isFinite(rightTime) ? rightTime : 0) - (Number.isFinite(leftTime) ? leftTime : 0);
+	});
+	return {
+		total: records.length,
+		warningsTriggered: records.filter((event) => event.warningTriggered === true).length,
+		teacherDiscussion: records.filter((event) => event.classificationLabel === "Teacher Discussion").length,
+		studentConversation: records.filter((event) => event.classificationLabel === "Student Conversation").length,
+		soundReadings: records.filter((event) => Number.isFinite(event.soundLevelValue) && event.soundLevelUnit === "dB_SPL").length,
+		latestEvent: sorted[0] || null,
+	};
+}
+
+export function isStale(timestamp, now = Date.now(), maxAgeMs = 60000) {
+	const time = Date.parse(timestamp);
+	if (!Number.isFinite(time)) return true;
+	return now - time > maxAgeMs;
+}
+
+export async function sendEmptyContractSample(fetchImpl = fetch, baseUrl = resolveBackendUrl(), id = `dashboard-check-${Date.now()}`) {
 	const event = {
 		schema_version: "1.0",
 		event_id: id,
@@ -218,7 +412,7 @@ export function describeAudioInference(payload) {
 	};
 }
 
-export async function classifyAudioFile(file, fetchImpl = fetch, baseUrl = BACKEND_URL) {
+export async function classifyAudioFile(file, fetchImpl = fetch, baseUrl = resolveBackendUrl()) {
 	if (!file || typeof file.name !== "string" || !/\.wav$/i.test(file.name) || typeof file.arrayBuffer !== "function") {
 		return { ok: false, state: "invalid-audio", code: "invalid_audio", message: "Choose a local WAV file." };
 	}
@@ -245,19 +439,24 @@ export async function classifyAudioFile(file, fetchImpl = fetch, baseUrl = BACKE
 }
 
 function mountPanel() {
+	// `index.html` loads this module for cache-busting while `dashboard.mjs`
+	// imports it by path. Both evaluate in separate module instances, so guard
+	// against mounting a second panel with duplicate IDs and listeners.
+	if (document.getElementById("integration")) return;
 	const panel = document.createElement("aside");
 	panel.className = "backend-check-panel";
+	panel.id = "integration";
 	panel.setAttribute("aria-labelledby", "backend-check-title");
 	panel.innerHTML = `
 		<div class="backend-check-heading">
-			<div class="backend-check-heading-copy"><span class="backend-check-kicker">LOCAL INTEGRATION</span><h2 id="backend-check-title">Backend contract check</h2></div>
+			<div class="backend-check-heading-copy"><span class="backend-check-kicker">LOCAL INTEGRATION</span><h2 id="backend-check-title">Backend contract checks</h2></div>
 			<button class="backend-check-toggle" type="button" aria-expanded="false" aria-controls="backend-check-content"><span data-toggle-label>Expand panel</span><span class="backend-check-toggle-indicator" aria-hidden="true">+</span></button>
 		</div>
-		<div class="backend-check-summary"><span class="backend-check-mode">SAMPLE DATA / NO HARDWARE</span><p class="backend-check-note">The dashboard values above are simulated sample data. This panel shows actual local-backend responses, not simulated API responses. Its empty sample request contains no audio or sensor readings.</p></div>
+		<div class="backend-check-summary"><span class="backend-check-mode">CONTRACT CHECK / NO HARDWARE</span><p class="backend-check-note">The dashboard above reads actual backend responses. This panel provides extra contract checks; its empty sample request contains no audio or sensor readings, but the backend stores it as an event. The warning simulation below is explicitly simulated and is never shown as live dashboard data.</p></div>
 		<div class="backend-check-content" id="backend-check-content" hidden>
 		<section class="backend-check-demo" aria-labelledby="backend-demo-title">
 			<div class="backend-check-demo-heading"><span class="backend-check-mode">DEMO MODE</span><h3 id="backend-demo-title">Warning policy simulation</h3></div>
-			<p class="backend-check-demo-note">Simulated inputs only; no trained model, microphone, ESP32 connection, or buzzer. The local demo threshold is preset to 75 dB SPL.</p>
+			<p class="backend-check-demo-note">Simulated inputs only; no trained model, microphone, ESP32 connection, or buzzer. The preset 75 dB SPL value is a demo input, not the deployed warning threshold or policy.</p>
 			<label>Selected class (simulated)
 				<select data-demo-class>
 					<option>Teacher Discussion</option>
@@ -313,7 +512,9 @@ function mountPanel() {
 		</dl>
 		</div>`;
 	const contentHost = document.querySelector(".content-wrap") || document.querySelector(".main-content") || document.body;
-	contentHost.append(panel);
+	const footer = contentHost.querySelector(".page-footer");
+	if (footer) contentHost.insertBefore(panel, footer);
+	else contentHost.append(panel);
 	const panelToggle = panel.querySelector(".backend-check-toggle");
 	const panelContent = panel.querySelector("#backend-check-content");
 	panelToggle.addEventListener("click", () => {

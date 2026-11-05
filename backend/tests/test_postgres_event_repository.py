@@ -7,7 +7,7 @@ import tempfile
 from threading import Barrier
 import unittest
 from uuid import uuid4
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from backend.migrate import apply_migrations
 from backend.postgres_event_repository import (
@@ -23,6 +23,71 @@ class PostgresRepositoryConfigurationTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaisesRegex(PostgresRepositoryConfigError, "SONIQ_DATABASE_URL"):
                 PostgresEventRepository.from_environment()
+
+
+class PostgresEventRepositoryUnitTests(unittest.TestCase):
+    def repository_with_results(self, rows):
+        repository = object.__new__(PostgresEventRepository)
+        repository._pool = MagicMock()
+        connection = repository._pool.connection.return_value.__enter__.return_value
+        count_result = MagicMock()
+        count_result.fetchone.return_value = (len(rows),)
+        page_result = MagicMock()
+        page_result.fetchall.return_value = rows
+        connection.execute.side_effect = [MagicMock(), count_result, page_result]
+        return repository, connection
+
+    def test_list_events_maps_persisted_columns_and_keeps_optional_values_null(self):
+        timestamp = datetime(2026, 10, 11, 4, 0, tzinfo=timezone.utc)
+        row = (
+            "event-1", "device-1", "1.0", timestamp, "unknown",
+            None, False, None, "unavailable",
+            None, None, False, None, "unavailable",
+            False, "classification_unavailable",
+        )
+        repository, connection = self.repository_with_results([row])
+
+        events, total = repository.list_events(limit=10, offset=0)
+
+        self.assertEqual(total, 1)
+        self.assertEqual(events, [{
+            "schema_version": "1.0",
+            "event_id": "event-1",
+            "device_id": "device-1",
+            "received_at": "2026-10-11T04:00:00Z",
+            "connection_status": {"backend": "online", "sensor": "unknown"},
+            "classification": {
+                "label": None,
+                "confident": False,
+                "observed_at": None,
+                "status": "unavailable",
+            },
+            "sound_level": {
+                "value": None,
+                "unit": None,
+                "calibrated": False,
+                "observed_at": None,
+                "status": "unavailable",
+            },
+            "warning": {
+                "triggered": False,
+                "reason": "classification_unavailable",
+            },
+        }])
+        self.assertIn(
+            "ORDER BY received_at DESC, event_id ASC",
+            connection.execute.call_args_list[2].args[0],
+        )
+        self.assertEqual(connection.execute.call_args_list[2].args[1], (10, 0))
+
+    def test_list_events_translates_database_failure(self):
+        repository = object.__new__(PostgresEventRepository)
+        repository._pool = MagicMock()
+        connection = repository._pool.connection.return_value.__enter__.return_value
+        connection.execute.side_effect = RuntimeError("private connection detail")
+
+        with self.assertRaisesRegex(EventStorageError, "could not retrieve events"):
+            repository.list_events(limit=10, offset=0)
 
 
 class PostgresEventRepositoryIntegrationTests(unittest.TestCase):
@@ -174,6 +239,63 @@ class PostgresEventRepositoryIntegrationTests(unittest.TestCase):
             datetime(2026, 10, 11, 3, 59, 59, tzinfo=timezone.utc), "fresh",
         ))
         self.assertEqual(row[12:], (True, "student_conversation_above_threshold"))
+
+    def test_list_events_returns_newest_first_and_total_with_optional_fields(self):
+        oldest = self.event_response(event_id="event-old")
+        oldest["received_at"] = "2026-10-10T04:00:01Z"
+        newest = self.event_response(event_id="event-new")
+        newest["received_at"] = "2026-10-12T04:00:01Z"
+        newest["classification"] = {
+            "label": None,
+            "confident": False,
+            "observed_at": None,
+            "status": "unavailable",
+        }
+        newest["sound_level"] = {
+            "value": None,
+            "unit": None,
+            "calibrated": False,
+            "observed_at": None,
+            "status": "unavailable",
+        }
+        newest["warning"] = {
+            "triggered": False,
+            "reason": "classification_unavailable",
+        }
+        self.repository.save_event(oldest)
+        self.repository.save_event(newest)
+
+        events, total = self.repository.list_events(limit=10, offset=0)
+
+        self.assertEqual(total, 2)
+        self.assertEqual([event["event_id"] for event in events], [
+            "event-new", "event-old"
+        ])
+        self.assertEqual(events[0]["received_at"], "2026-10-12T04:00:01Z")
+        self.assertEqual(events[0]["connection_status"], {
+            "backend": "online",
+            "sensor": "online",
+        })
+        self.assertIsNone(events[0]["classification"]["label"])
+        self.assertIsNone(events[0]["sound_level"]["value"])
+        self.assertFalse(events[0]["warning"]["triggered"])
+
+    def test_list_events_applies_limit_and_offset(self):
+        for index in range(3):
+            event = self.event_response(event_id=f"event-{index}")
+            event["received_at"] = f"2026-10-11T04:00:0{index}Z"
+            self.repository.save_event(event)
+
+        events, total = self.repository.list_events(limit=1, offset=1)
+
+        self.assertEqual(total, 3)
+        self.assertEqual([event["event_id"] for event in events], ["event-1"])
+        self.assertEqual(self.repository.list_events(limit=10, offset=99), ([], 3))
+
+    def test_list_events_rejects_invalid_limit_and_offset(self):
+        for limit, offset in ((0, 0), (101, 0), (True, 0), (1, -1), (1, True)):
+            with self.subTest(limit=limit, offset=offset), self.assertRaises(ValueError):
+                self.repository.list_events(limit=limit, offset=offset)
 
     def test_duplicate_global_event_id_from_another_device_is_rejected(self):
         self.repository.save_event(self.event_response())

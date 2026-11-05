@@ -14,7 +14,7 @@ import os
 import time
 from numbers import Real
 from typing import Any
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from ml.audio_inference import (
     InvalidAudioSample,
@@ -40,6 +40,8 @@ SOUND_LEVEL_UNIT = "dB_SPL"
 SENSOR_STATUSES = ("online", "offline", "unknown")
 MAX_AUDIO_REQUEST_BYTES = 32 * 1024 * 1024
 MAX_EVENT_REQUEST_BYTES = 1024 * 1024
+MAX_EVENT_PAGE_SIZE = 100
+MAX_DATABASE_OFFSET = (1 << 63) - 1
 
 
 @dataclass(frozen=True)
@@ -59,6 +61,72 @@ class BackendConfig:
 
 class RequestError(ValueError):
     """An event does not match the versioned request contract."""
+
+
+def _query_integer(value: str, name: str, *, minimum: int, maximum: int) -> int:
+    if (
+        not value
+        or len(value) > 19
+        or not value.isascii()
+        or not value.isdigit()
+    ):
+        raise ValueError(f"{name} must be a decimal integer")
+    parsed = int(value)
+    if not minimum <= parsed <= maximum:
+        raise ValueError(f"{name} is outside the allowed range")
+    return parsed
+
+
+def _event_list_pagination(path: str) -> tuple[int, int, int]:
+    """Parse either page/page_size or the dashboard's legacy limit/offset."""
+    try:
+        query = parse_qs(
+            urlsplit(path).query,
+            keep_blank_values=True,
+            strict_parsing=True,
+        )
+    except ValueError as error:
+        raise ValueError("invalid query string") from error
+
+    allowed = {"page", "page_size", "limit", "offset"}
+    if set(query) - allowed or any(len(values) != 1 for values in query.values()):
+        raise ValueError("unsupported or repeated pagination parameter")
+    has_page_params = bool({"page", "page_size"} & query.keys())
+    has_legacy_params = bool({"limit", "offset"} & query.keys())
+    if has_page_params and has_legacy_params:
+        raise ValueError("do not mix pagination parameter formats")
+
+    if has_page_params:
+        page = _query_integer(
+            query.get("page", ["1"])[0],
+            "page",
+            minimum=1,
+            maximum=MAX_DATABASE_OFFSET,
+        )
+        page_size = _query_integer(
+            query.get("page_size", ["10"])[0],
+            "page_size",
+            minimum=1,
+            maximum=MAX_EVENT_PAGE_SIZE,
+        )
+        offset = (page - 1) * page_size
+        if offset > MAX_DATABASE_OFFSET:
+            raise ValueError("page is outside the allowed range")
+    else:
+        page_size = _query_integer(
+            query.get("limit", ["10"])[0],
+            "limit",
+            minimum=1,
+            maximum=MAX_EVENT_PAGE_SIZE,
+        )
+        offset = _query_integer(
+            query.get("offset", ["0"])[0],
+            "offset",
+            minimum=0,
+            maximum=MAX_DATABASE_OFFSET,
+        )
+        page = offset // page_size + 1
+    return page, page_size, offset
 
 
 def _request_content_length(headers: Any) -> int:
@@ -343,14 +411,56 @@ class BackendHandler(BaseHTTPRequestHandler):
     backend_config: BackendConfig
 
     def do_GET(self) -> None:
-        if self.path != "/health":
-            self._send_json(404, {"error": {"code": "not_found"}})
+        if self.path == "/health":
+            self._send_json(200, {
+                "schema_version": SCHEMA_VERSION,
+                "service": "soniq-backend",
+                "status": "online",
+                **_warning_configuration(self.server.backend_config),
+            })
+            return
+        if urlsplit(self.path).path == "/api/v1/events":
+            self._list_events()
+            return
+        self._send_json(404, {"error": {"code": "not_found"}})
+
+    def _list_events(self) -> None:
+        try:
+            page, page_size, offset = _event_list_pagination(self.path)
+        except ValueError:
+            self._send_json(400, {
+                "schema_version": SCHEMA_VERSION,
+                "error": {"code": "invalid_pagination"},
+            })
+            return
+
+        repository = getattr(self.server, "event_repository", None)
+        if repository is None:
+            self._send_json(503, {
+                "schema_version": SCHEMA_VERSION,
+                "error": {"code": "storage_unavailable"},
+            })
+            return
+        try:
+            events, total = repository.list_events(limit=page_size, offset=offset)
+        except Exception:
+            self._send_json(503, {
+                "schema_version": SCHEMA_VERSION,
+                "error": {"code": "storage_unavailable"},
+            })
             return
         self._send_json(200, {
             "schema_version": SCHEMA_VERSION,
-            "service": "soniq-backend",
-            "status": "online",
-            **_warning_configuration(self.server.backend_config),
+            "events": events,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "pagination": {
+                "limit": page_size,
+                "offset": offset,
+                "total": total,
+                "has_more": offset + len(events) < total,
+            },
         })
 
     def do_OPTIONS(self) -> None:
@@ -359,6 +469,7 @@ class BackendHandler(BaseHTTPRequestHandler):
             return
         origin = self.headers.get("Origin", "")
         requested_method = self.headers.get("Access-Control-Request-Method", "")
+        allowed_methods = ("GET", "POST") if self.path == "/api/v1/events" else ("POST",)
         requested_headers = {
             name.strip().lower()
             for name in self.headers.get("Access-Control-Request-Headers", "").split(",")
@@ -366,14 +477,17 @@ class BackendHandler(BaseHTTPRequestHandler):
         }
         if (
             not _is_loopback_origin(origin)
-            or requested_method != "POST"
+            or requested_method not in allowed_methods
             or not requested_headers.issubset({"content-type"})
         ):
             self._send_json(403, {"error": {"code": "origin_or_preflight_not_allowed"}})
             return
         self.send_response(204)
         self._add_cors_headers(origin)
-        self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+        self.send_header(
+            "Access-Control-Allow-Methods",
+            ", ".join((*allowed_methods, "OPTIONS")),
+        )
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
 

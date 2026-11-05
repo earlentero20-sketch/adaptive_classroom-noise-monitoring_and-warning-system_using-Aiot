@@ -6,22 +6,20 @@
 
 **1\. Current Project Status**
 
-This is not the finished AIoT system. It is the current dashboard/prototype version of the project. It shows the planned monitoring interface and some simulated interactions, but the complete physical AIoT system is still being developed.  
+This is not the finished AIoT system. It is the current dashboard/prototype version of the project. The dashboard now reads actual backend responses and reports missing data explicitly; see [dashboard/README.md](dashboard/README.md) for its API usage and UI states. The complete physical AIoT system is still being developed.
 The documentation therefore records what is currently available and what still needs to be completed  
 .  
 **2\. What Is Currently Available in our System**
 
-* Hushline classroom monitoring dashboard.  
-* Classroom selection and classroom status display.  
-* Noise-level display using prototype/sample values.  
-* Live and History dashboard views.  
-* Activity modes and adaptive threshold controls.  
-* Manual noise threshold control.  
-* Alert interface and mute/unmute control.  
-* Sensor-status interface.  
-* History information using prototype/sample data.  
-* CSV report export.  
-* CSS styling and VS Code launch configuration.
+* SONIQ classroom monitoring dashboard with Live and History views.
+* Backend health and warning-configuration readiness from `GET /health`.
+* Actual event-history display when `GET /api/v1/events` is available. The current backend does not implement this route, so the dashboard reports it as Unavailable.
+* Classification of a user-selected WAV through `POST /api/v1/classify`.
+* Explicit Loading, Empty, Error, Unavailable, Stale, Success, and Unknown states.
+* Sensor/device status reported by actual backend events, without claiming physical verification.
+* CSV export of actual loaded events.
+* Responsive layout, accessible keyboard navigation, and VS Code launch configuration.
+* A separate local backend contract-check panel with an explicitly simulated warning case.
 
 
 **3\. What Is Not Finished Yet**
@@ -110,9 +108,10 @@ Status: PASS / FAIL / NEEDS IMPROVEMENT
 
 9\. Current Prototype Notes From the System
 
-* The dashboard contains a SAMPLE DATA indication.  
-* The current noise values are simulated/sample values rather than confirmed physical microphone readings.  
-* The history information is prototype data.  
-* The adaptive threshold values are currently rule-based prototype settings.  
-* The sensor-status display is part of the dashboard interface but is not proof of a real connected sensor.
+* The dashboard overview displays only actual backend responses. It does not simulate readings, warning decisions, thresholds, or event history.
+* The local integration-check panel contains an explicitly simulated warning-policy case; that result is never shown as live dashboard data.
+* The current backend does not implement `GET /api/v1/events`, so event history is reported as Unavailable rather than as an empty history.
+* `POST /api/v1/classify` returns a classification only; it does not provide a sound level or evaluate warning policy.
+* Sensor status reported in an event is device-reported status, not proof of a physically connected sensor.
+* Warning policy and thresholds are owned by the backend and are never computed by the dashboard.
 

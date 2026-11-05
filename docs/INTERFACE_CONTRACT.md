@@ -92,6 +92,54 @@ is fresh, calibrated, and in `dB_SPL`, and the backend has an explicitly
 configured threshold that the reading strictly exceeds. `Teacher Discussion`
 never triggers this buzzer rule.
 
+## Event history
+
+`GET /api/v1/events` reads persisted rows from the PostgreSQL `events` table.
+Records are ordered newest first by `received_at`; `event_id` provides a
+stable tie-break order. The endpoint does not recalculate classifications or
+warning decisions. Each event uses the response fields described above and
+returns the values stored in the database, including nullable sound and
+classification readings.
+
+The preferred pagination parameters are `page` (default `1`) and `page_size`
+(default `10`, allowed range `1` to `100`). The endpoint also accepts the
+existing dashboard adapter's `limit` (default `10`, allowed range `1` to `100`) and
+`offset` (default `0`) parameters. Do not mix the two parameter formats.
+Repeated, malformed, unknown, out-of-range, or mixed pagination parameters
+return HTTP `400` with `error.code=invalid_pagination`.
+
+Successful responses contain `schema_version`, `events`, `total`, `page`,
+`page_size`, and dashboard-compatible `pagination` metadata (`limit`, `offset`,
+`total`, and `has_more`). An empty database returns HTTP `200` with an empty
+`events` array and `total: 0`, for example:
+
+```json
+{
+  "schema_version": "1.0",
+  "events": [],
+  "total": 0,
+  "page": 1,
+  "page_size": 10,
+  "pagination": {
+    "limit": 10,
+    "offset": 0,
+    "total": 0,
+    "has_more": false
+  }
+}
+```
+
+Event objects expose only the existing event schema: `schema_version`,
+`event_id`, `device_id`, `received_at`, `connection_status`,
+`classification` (`label`, `confident`, `observed_at`, `status`),
+`sound_level` (`value`, `unit`, `calibrated`, `observed_at`, `status`), and
+`warning` (`triggered`, `reason`). The only classification labels remain
+`Teacher Discussion` and `Student Conversation`. The backend currently has no
+application authentication or authorization on these routes; CORS restrictions
+are not authentication. Protect the service at the network/deployment layer.
+If PostgreSQL is unavailable or retrieval fails, the endpoint returns HTTP
+`503` with `error.code=storage_unavailable`.
+
 ## Freshness and configuration
 
 The backend has no default sound threshold and no default input freshness
