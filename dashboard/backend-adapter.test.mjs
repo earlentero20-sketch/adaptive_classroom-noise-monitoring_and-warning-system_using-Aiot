@@ -6,15 +6,12 @@ import {
 	classifyAudioFile,
 	DEFAULT_BACKEND_URL,
 	describeAudioInference,
-	describeEvent,
 	describeHealth,
-	evaluateDemoWarning,
 	fetchEvents,
 	isStale,
 	normalizeEventRecord,
 	resolveBackendUrl,
-	sendEmptyContractSample,
-	setPanelExpanded,
+	serializeEventReportCsv,
 	summarizeEvents,
 } from "./backend-adapter.mjs";
 
@@ -79,19 +76,20 @@ function localWav(name = "sample.wav") {
 	return Object.assign(new Blob(["controlled WAV request fixture"]), { name });
 }
 
-test("dashboard loads the current cache-busted backend adapter, UI module, and styles", async () => {
+test("dashboard loads the backend-driven UI and contains no sample or warning-simulation controls", async () => {
 	const html = await readFile(new URL("./index.html", import.meta.url), "utf8");
-	assert.match(html, /<script type="module" src="backend-adapter\.mjs\?v=audio-inference"><\/script>/);
 	assert.match(html, /<script type="module" src="dashboard\.mjs"><\/script>/);
 	assert.match(html, /<link rel="stylesheet" href="backend-adapter\.css">/);
 	assert.match(html, /<link rel="stylesheet" href="dashboard\.css">/);
 	assert.match(html, /id="data-source-badge">BACKEND DATA ONLY</);
 	assert.match(html, /id="connection-banner" data-state="idle" role="status" aria-live="polite"/);
-	assert.doesNotMatch(html, /Simulated data/);
+	assert.match(html, /id="integration-events"/);
+	assert.match(html, /GET \/api\/v1\/events\?limit=10&amp;offset=0/);
+	assert.doesNotMatch(html, /Send empty sample|Warning policy simulation|data-demo-/);
 	assert.doesNotMatch(html, /Math\.random/);
 	assert.doesNotMatch(html, /data-level="46"/);
 	const adapter = await readFile(new URL("./backend-adapter.mjs", import.meta.url), "utf8");
-	assert.match(adapter, /data-demo-threshold type="number" min="0" step="any" value="75"/);
+	assert.doesNotMatch(adapter, /evaluateDemoWarning|sendEmptyContractSample/);
 	assert.match(adapter, /"Teacher Discussion", "Student Conversation"/);
 });
 
@@ -103,8 +101,12 @@ test("dashboard delegates behavior to modules and contains no fabricated refresh
 	assert.doesNotMatch(html, /campus-db/);
 	assert.doesNotMatch(html, /historyByRange/);
 	assert.match(script, /document\.querySelectorAll\("\.nav-link"\)/);
-	assert.match(script, /setInterval\(\(\) => \{/);
+	assert.match(script, /setInterval\(\(\) => loadDashboard\(\{ quiet: true \}\), REFRESH_INTERVAL_MS\)/);
 	assert.match(script, /loadDashboard\(\{ quiet: true \}\)/);
+	assert.match(script, /clearInterval\(refreshTimer\)/);
+	assert.match(script, /clearInterval\(freshnessTimer\)/);
+	assert.match(script, /addEventListener\("pagehide"/);
+	assert.match(script, /addEventListener\("visibilitychange"/);
 	assert.match(script, /fetchEvents\(\{ fetchImpl: fetch, baseUrl: state\.baseUrl/);
 	assert.match(script, /classifyAudioFile\(file, fetch, state\.baseUrl\)/);
 });
@@ -135,49 +137,17 @@ test("Live and History tabs expose linked panels and automatic keyboard navigati
 	assert.match(styles, /button:focus-visible[^}]*outline: 3px solid/);
 });
 
-test("local integration starts collapsed with a visible disclaimer and stable controlled content", async () => {
-	const adapter = await readFile(new URL("./backend-adapter.mjs", import.meta.url), "utf8");
+test("integration section documents only real endpoints and its responsive status layout", async () => {
+	const html = await readFile(new URL("./index.html", import.meta.url), "utf8");
 	const css = await readFile(new URL("./backend-adapter.css", import.meta.url), "utf8");
-	assert.match(adapter, /class="backend-check-toggle" type="button" aria-expanded="false" aria-controls="backend-check-content"/);
-	assert.match(adapter, /id="backend-check-content" hidden/);
-	assert.match(adapter, /CONTRACT CHECK \/ NO HARDWARE/);
-	assert.match(adapter, /reads actual backend responses/);
-	assert.match(adapter, /explicitly simulated and is never shown as live dashboard data/);
-	assert.match(adapter, /data-toggle-label>Expand panel/);
-	assert.match(adapter, /backend-check-toggle-indicator[^>]*>\+</);
-	assert.match(adapter, /panel\.id = "integration"/);
-	assert.match(adapter, /if \(document\.getElementById\("integration"\)\) return;/);
-	assert.match(adapter, /document\.querySelector\("\.content-wrap"\).*contentHost\.insertBefore\(panel, footer\)/s);
-	assert.match(css, /\.backend-check-content\[hidden\] \{ display: none; \}/);
-	assert.match(css, /\.backend-check-panel \{[^}]*width: 100%;[^}]*margin:/);
-	assert.doesNotMatch(css, /\.backend-check-panel \{[^}]*position:\s*fixed/);
-});
-
-test("local integration toggle synchronizes hidden content, ARIA state, label, and indicator", () => {
-	const label = { textContent: "Expand panel" };
-	const indicator = { textContent: "+" };
-	const controls = new Map([
-		["[data-toggle-label]", label],
-		[".backend-check-toggle-indicator", indicator],
-	]);
-	const attributes = new Map([["aria-expanded", "false"]]);
-	const toggle = {
-		setAttribute: (name, value) => attributes.set(name, value),
-		querySelector: (selector) => controls.get(selector),
-	};
-	const content = { hidden: true };
-
-	setPanelExpanded(toggle, content, true);
-	assert.equal(content.hidden, false);
-	assert.equal(attributes.get("aria-expanded"), "true");
-	assert.equal(label.textContent, "Collapse panel");
-	assert.equal(indicator.textContent, "−");
-
-	setPanelExpanded(toggle, content, false);
-	assert.equal(content.hidden, true);
-	assert.equal(attributes.get("aria-expanded"), "false");
-	assert.equal(label.textContent, "Expand panel");
-	assert.equal(indicator.textContent, "+");
+	assert.match(html, /id="integration" aria-labelledby="integration-title"/);
+	assert.match(html, /id="integration-health"/);
+	assert.match(html, /id="integration-events"/);
+	assert.match(html, /id="integration-classification"/);
+	assert.match(html, /refreshed every 30 seconds while this page is visible/);
+	assert.match(html, /does not verify physical buzzer operation/);
+	assert.match(css, /\.integration-list/);
+	assert.match(css, /@media \(max-width: 560px\)/);
 });
 
 test("health response distinguishes reachable service from unready warning settings", () => {
@@ -207,35 +177,16 @@ test("health response distinguishes reachable service from unready warning setti
 	assert.equal(describeHealth({ status: "online" }).ok, false);
 });
 
-test("empty contract response clearly reports missing sensor data and no warning", () => {
-	const view = describeEvent(emptyResponse);
-	assert.equal(view.ok, true);
-	assert.equal(view.sensor, "unknown (no hardware data)");
-	assert.equal(view.classification, "Unavailable (no model data)");
-	assert.equal(view.soundLevel, "Unavailable (no microphone data)");
-	assert.equal(view.warning, "Not triggered");
-});
-
-test("event adapter rejects malformed backend responses and qualifies reported hardware state", () => {
-	assert.equal(describeEvent({ ...emptyResponse, sound_level: { value: "75", unit: "dB_SPL" } }).ok, false);
-	assert.equal(describeEvent({ ...emptyResponse, received_at: "not-a-zoned-time" }).ok, false);
-	const reported = describeEvent({
+test("event adapter validates actual warning, sound, and reported sensor values", () => {
+	assert.equal(normalizeEventRecord({ ...emptyResponse, sound_level: { value: "75", unit: "dB_SPL" } }), null);
+	assert.equal(normalizeEventRecord({ ...emptyResponse, received_at: "not-a-zoned-time" }), null);
+	const reported = normalizeEventRecord({
 		...emptyResponse,
 		connection_status: { backend: "online", sensor: "online" },
 	});
-	assert.match(reported.sensor, /not physically verified/);
-});
-
-test("event view handles warning and non-warning responses from the contract", () => {
-	const warningResponse = {
-		...emptyResponse,
-		classification: { label: "Student Conversation", confident: true, status: "fresh", observed_at: "2026-10-11T04:00:00Z" },
-		sound_level: { value: 75, unit: "dB_SPL", calibrated: true, status: "fresh", observed_at: "2026-10-11T04:00:00Z" },
-		warning: { triggered: true, reason: "sound_level_above_threshold" },
-	};
-	assert.equal(describeEvent(warningResponse).warning, "Triggered");
-	assert.equal(describeEvent({ ...warningResponse, warning: { triggered: false, reason: "teacher_discussion" } }).warning, "Not triggered");
-	assert.equal(describeEvent({ schema_version: "1.0" }).ok, false);
+	assert.equal(reported.sensorStatus, "online");
+	assert.equal(reported.warningTriggered, false);
+	assert.equal(reported.warningReason, "classification_unavailable");
 });
 
 test("health adapter reports backend unavailability", async () => {
@@ -244,85 +195,26 @@ test("health adapter reports backend unavailability", async () => {
 	assert.match(result.message, /Backend unavailable/);
 });
 
+test("event history request times out and reports the timeout explicitly", async (t) => {
+	t.mock.timers.enable({ apis: ["setTimeout"] });
+	const pending = fetchEvents({
+		fetchImpl: (_url, { signal }) => new Promise((_resolve, reject) => {
+			signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+		}),
+	});
+
+	t.mock.timers.tick(15_000);
+	const result = await pending;
+	assert.equal(result.ok, false);
+	assert.equal(result.code, "request_timeout");
+	assert.match(result.message, /timed out after 15 seconds/);
+});
+
 test("health adapter marks malformed payload as reachable but not ready", async () => {
 	const result = await checkBackend(async () => ({ ok: true, json: async () => ({ status: "online" }) }));
 	assert.equal(result.ok, false);
 	assert.equal(result.reachable, true);
 	assert.match(result.message, /response is invalid/);
-});
-
-test("sample request is explicitly empty and consumes backend response", async () => {
-	let sent;
-	const result = await sendEmptyContractSample(async (_url, options) => {
-		sent = JSON.parse(options.body);
-		return { ok: true, json: async () => emptyResponse };
-	}, "http://127.0.0.1:8000", "test-check");
-	assert.equal(sent.event_id, "test-check");
-	assert.equal(sent.sensor_status, "unknown");
-	assert.equal(sent.classification.label, null);
-	assert.equal(sent.sound_level.value, null);
-	assert.equal(result.warning, "Not triggered");
-});
-
-test("demo policy triggers only for simulated student conversation above a fresh calibrated threshold", () => {
-	const result = evaluateDemoWarning({
-		classification: "Student Conversation",
-		soundLevel: "76",
-		threshold: "75",
-		measurementState: "fresh_calibrated",
-	});
-	assert.deepEqual(result, { triggered: true, reason: "student_conversation_above_threshold", simulated: true });
-	assert.equal(evaluateDemoWarning({
-		classification: "Teacher Discussion",
-		soundLevel: "99",
-		threshold: "75",
-		measurementState: "fresh_calibrated",
-	}).triggered, false);
-});
-
-test("demo policy uses a strict threshold comparison and refuses invalid threshold settings", () => {
-	for (const [soundLevel, threshold, reason] of [
-		["75", "75", "below_threshold"],
-		["74", "75", "below_threshold"],
-		["76", "", "threshold_unconfigured"],
-		["76", "0", "threshold_invalid"],
-		["not-a-number", "75", "sound_level_invalid"],
-		["", "75", "sound_level_unavailable"],
-	]) {
-		const result = evaluateDemoWarning({
-			classification: "Student Conversation",
-			soundLevel,
-			threshold,
-			measurementState: "fresh_calibrated",
-		});
-		assert.equal(result.triggered, false);
-		assert.equal(result.reason, reason);
-		assert.equal(result.simulated, true);
-	}
-});
-
-test("demo policy never warns for stale, unavailable, invalid, or uncalibrated readings", () => {
-	for (const [measurementState, reason] of [
-		["stale", "measurement_stale"],
-		["unavailable", "sound_level_unavailable"],
-		["invalid", "sound_level_invalid"],
-		["uncalibrated", "sound_level_uncalibrated"],
-	]) {
-		const result = evaluateDemoWarning({
-			classification: "Student Conversation",
-			soundLevel: "99",
-			threshold: "70",
-			measurementState,
-		});
-		assert.equal(result.triggered, false);
-		assert.equal(result.reason, reason);
-	}
-	assert.equal(evaluateDemoWarning({
-		classification: null,
-		soundLevel: "99",
-		threshold: "75",
-		measurementState: "fresh_calibrated",
-	}).triggered, false);
 });
 
 test("audio inference adapter accepts only a genuine two-class model response with uncalibrated probability", () => {
@@ -391,7 +283,22 @@ test("WAV upload rejects non-WAV input before sending and reports missing model 
 		json: async () => ({ error: { code: "model_unavailable" } }),
 	}));
 	assert.equal(unavailable.state, "model-unavailable");
-	assert.match(unavailable.message, /DEMO MODE was not started/);
+	assert.match(unavailable.message, /No prediction was produced/);
+});
+
+test("WAV classification timeout does not produce a prediction", async (t) => {
+	t.mock.timers.enable({ apis: ["setTimeout"] });
+	const pending = classifyAudioFile(localWav(), (_url, { signal }) => new Promise((_resolve, reject) => {
+		signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+	}));
+
+	t.mock.timers.tick(120_000);
+	const result = await pending;
+	assert.equal(result.ok, false);
+	assert.equal(result.state, "request-timeout");
+	assert.equal(result.code, "request_timeout");
+	assert.match(result.message, /timed out after 120 seconds/);
+	assert.match(result.message, /No prediction was produced/);
 });
 
 test("WAV upload reports invalid audio, malformed responses, and network errors without predictions", async () => {
@@ -406,7 +313,7 @@ test("WAV upload reports invalid audio, malformed responses, and network errors 
 	assert.equal(Object.hasOwn(malformed, "classification"), false);
 	const offline = await classifyAudioFile(localWav(), async () => { throw new Error("connection refused"); });
 	assert.equal(offline.state, "backend-unavailable");
-	assert.match(offline.message, /DEMO MODE was not started/);
+	assert.match(offline.message, /No prediction was produced/);
 });
 
 test("event history adapter uses GET, preserves pagination, and validates contract records", async () => {
@@ -416,7 +323,11 @@ test("event history adapter uses GET, preserves pagination, and validates contra
 			request = { url, options };
 			return {
 				ok: true,
-				json: async () => ({ events: [warningEvent, teacherEvent], pagination: { total: 2, has_more: false } }),
+				json: async () => ({
+					total: 2,
+					events: [warningEvent, teacherEvent],
+					pagination: { limit: 5, offset: 0, total: 2, has_more: false },
+				}),
 			};
 		},
 		baseUrl: "http://127.0.0.1:8000",
@@ -431,6 +342,29 @@ test("event history adapter uses GET, preserves pagination, and validates contra
 	assert.equal(result.events[0].classificationLabel, "Student Conversation");
 	assert.equal(result.events[0].warningTriggered, true);
 	assert.deepEqual(result.pagination, { limit: 5, offset: 0, total: 2, hasMore: false });
+});
+
+test("event history adapter accepts an actual empty page and preserves backend pagination", async () => {
+	const result = await fetchEvents({
+		fetchImpl: async (url) => {
+			assert.match(url, /\/api\/v1\/events\?limit=3&offset=6$/);
+			return {
+				ok: true,
+				json: async () => ({
+					schema_version: "1.0",
+					events: [],
+					total: 8,
+					pagination: { limit: 3, offset: 6, total: 8, has_more: false },
+				}),
+			};
+		},
+		baseUrl: "http://127.0.0.1:8000",
+		limit: 3,
+		offset: 6,
+	});
+	assert.equal(result.ok, true);
+	assert.deepEqual(result.events, []);
+	assert.deepEqual(result.pagination, { limit: 3, offset: 6, total: 8, hasMore: false });
 });
 
 test("event history adapter reports a missing backend route as unavailable, not empty", async () => {
@@ -464,6 +398,17 @@ test("event history adapter distinguishes network, malformed, and invalid-record
 	});
 	assert.equal(invalid.state, "error");
 	assert.match(invalid.message, /do not match the event contract/);
+
+	const unavailableStorage = await fetchEvents({
+		fetchImpl: async () => ({
+			ok: false,
+			status: 503,
+			json: async () => ({ error: { code: "storage_unavailable" } }),
+		}),
+		baseUrl: "http://127.0.0.1:8000",
+	});
+	assert.equal(unavailableStorage.state, "error");
+	assert.match(unavailableStorage.message, /HTTP 503/);
 });
 
 test("event history summary counts actual labels, warnings, readings, and latest event", () => {
@@ -474,6 +419,20 @@ test("event history summary counts actual labels, warnings, readings, and latest
 	assert.equal(summary.studentConversation, 1);
 	assert.equal(summary.soundReadings, 2);
 	assert.equal(summary.latestEvent.eventId, "event-warning");
+});
+
+test("event report CSV keeps the event contract and neutralizes formula-like fields", () => {
+	const event = normalizeEventRecord({
+		...warningEvent,
+		event_id: "=1+1",
+		device_id: '@SUM("x")',
+		warning: { triggered: true, reason: "first line\r\nsecond,line" },
+	});
+	const csv = serializeEventReportCsv([event]);
+	assert.match(csv, /^event_id,device_id,received_at,classification,/);
+	assert.match(csv, /\r\n'=1\+1,"'@SUM\(""x""\)"/);
+	assert.match(csv, /"first line\r\nsecond,line"$/);
+	assert.throws(() => serializeEventReportCsv(null), /must be an array/);
 });
 
 test("stale and backend URL helpers fail closed", () => {

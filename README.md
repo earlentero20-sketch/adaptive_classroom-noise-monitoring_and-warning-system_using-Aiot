@@ -13,13 +13,13 @@ The documentation therefore records what is currently available and what still n
 
 * SONIQ classroom monitoring dashboard with Live and History views.
 * Backend health and warning-configuration readiness from `GET /health`.
-* Actual event-history display when `GET /api/v1/events` is available. The current backend does not implement this route, so the dashboard reports it as Unavailable.
+* Actual PostgreSQL event-history display through `GET /api/v1/events` with `limit`/`offset` pagination.
 * Classification of a user-selected WAV through `POST /api/v1/classify`.
 * Explicit Loading, Empty, Error, Unavailable, Stale, Success, and Unknown states.
 * Sensor/device status reported by actual backend events, without claiming physical verification.
 * CSV export of actual loaded events.
 * Responsive layout, accessible keyboard navigation, and VS Code launch configuration.
-* A separate local backend contract-check panel with an explicitly simulated warning case.
+* API integration status for health, PostgreSQL event history, and WAV classification.
 
 
 **3\. What Is Not Finished Yet**
@@ -33,7 +33,6 @@ The documentation therefore records what is currently available and what still n
 * Continuous classroom hardware testing.  
 * Complete teacher authentication and authorization.  
 * Complete Wi-Fi/network security implementation.  
-* Actual persistent database/history for the deployed system.  
 * Final AI/ML implementation, if required by the final design.
 
 **4\. Progress of the System**
@@ -109,9 +108,8 @@ Status: PASS / FAIL / NEEDS IMPROVEMENT
 9\. Current Prototype Notes From the System
 
 * The dashboard overview displays only actual backend responses. It does not simulate readings, warning decisions, thresholds, or event history.
-* The local integration-check panel contains an explicitly simulated warning-policy case; that result is never shown as live dashboard data.
-* The current backend does not implement `GET /api/v1/events`, so event history is reported as Unavailable rather than as an empty history.
+* The dashboard reads actual events from PostgreSQL using `GET /api/v1/events`; a database error is displayed as an API error, not an empty history.
+* The dashboard contains no mock event data, simulated warning policy, or sample-event write action.
 * `POST /api/v1/classify` returns a classification only; it does not provide a sound level or evaluate warning policy.
 * Sensor status reported in an event is device-reported status, not proof of a physically connected sensor.
 * Warning policy and thresholds are owned by the backend and are never computed by the dashboard.
-

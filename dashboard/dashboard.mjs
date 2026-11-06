@@ -4,6 +4,7 @@ import {
 	fetchEvents,
 	isStale,
 	resolveBackendUrl,
+	serializeEventReportCsv,
 	summarizeEvents,
 } from "./backend-adapter.mjs";
 
@@ -28,6 +29,10 @@ const state = {
 	busy: false,
 };
 
+let refreshTimer = null;
+let freshnessTimer = null;
+let pageActive = true;
+
 const byId = (id) => document.getElementById(id);
 
 function setText(id, value) {
@@ -44,6 +49,11 @@ function setMetric(valueId, value, stateValue, detailId, detail) {
 	setText(valueId, value);
 	setState(valueId, stateValue);
 	if (detailId) setText(detailId, detail);
+}
+
+function setIntegrationStatus(id, value, stateValue) {
+	setText(id, value);
+	setState(id, stateValue);
 }
 
 function formatTimestamp(value) {
@@ -98,10 +108,11 @@ function updateLastUpdated() {
 	}
 	const stale = isStale(last, Date.now(), STALE_AFTER_MS);
 	if (state.health && !state.health.ok) {
-		setText(
-			"last-updated-text",
-			`${state.health.reachable ? "Invalid response" : "Unreachable"} · checked ${formatTime(last)}`,
-		);
+		const checkedAt = state.healthAt || last;
+		const dataStatus = state.eventsAt
+			? ` · event data ${isStale(state.eventsAt, Date.now(), STALE_AFTER_MS) ? "stale" : "last loaded"} ${formatTime(state.eventsAt)}`
+			: "";
+		setText("last-updated-text", `${state.health.reachable ? "Invalid response" : "Unreachable"} · checked ${formatTime(checkedAt)}${dataStatus}`);
 		setState("live-pip", "error");
 		return;
 	}
@@ -123,6 +134,8 @@ function renderHealth(health, checkedAt) {
 	setText("health-api-url", state.baseUrl);
 
 	if (!health) {
+		setIntegrationStatus("integration-health", "Not checked", "idle");
+		setIntegrationStatus("integration-state", "Not checked", "idle");
 		setBanner("idle", "Backend status not checked", `Use Refresh data to check the SONIQ backend at ${state.baseUrl}.`);
 		setMetric("backend-status-value", "Not checked", "idle", "backend-status-detail", "GET /health has not been called yet.");
 		setMetric("warning-config-value", "Not checked", "idle", "warning-config-detail", "Warning readiness has not been checked.");
@@ -139,6 +152,8 @@ function renderHealth(health, checkedAt) {
 	}
 
 	if (health.ok) {
+		setIntegrationStatus("integration-health", "Online · warning configuration " + (health.warningReady ? "ready" : "not ready"), health.warningReady ? "ok" : "warn");
+		setIntegrationStatus("integration-state", "Backend online", "ok");
 		setBanner(
 			"ok",
 			"Backend online",
@@ -175,6 +190,8 @@ function renderHealth(health, checkedAt) {
 	}
 
 	if (health.reachable) {
+		setIntegrationStatus("integration-health", "Reachable · invalid response", "error");
+		setIntegrationStatus("integration-state", "Invalid response", "error");
 		setBanner("error", "Backend response invalid", health.message);
 		setMetric("backend-status-value", "Invalid response", "error", "backend-status-detail", health.message);
 		setMetric("warning-config-value", "Unknown", "unknown", "warning-config-detail", "The health response could not be trusted.");
@@ -190,6 +207,8 @@ function renderHealth(health, checkedAt) {
 		return;
 	}
 
+	setIntegrationStatus("integration-health", "Unreachable", "error");
+	setIntegrationStatus("integration-state", "Backend unavailable", "error");
 	setBanner("error", "Backend unreachable", health.message || "The SONIQ backend could not be reached.");
 	setMetric("backend-status-value", "Unreachable", "error", "backend-status-detail", health.message || "The request did not complete.");
 	setMetric("warning-config-value", "Unknown", "unknown", "warning-config-detail", "Warning readiness cannot be determined while the backend is unreachable.");
@@ -322,10 +341,11 @@ function updateEventsFooter() {
 	if (next) next.disabled = state.busy || state.eventsState !== "success" || !state.hasMore;
 	if (exportButton) exportButton.disabled = state.busy || state.eventsState !== "success" || !state.events || state.events.length === 0;
 
-	if (state.eventsState === "success" && state.events) {
+	if (["success", "stale"].includes(state.eventsState) && state.events) {
 		const parts = [`Showing ${state.events.length} event${state.events.length === 1 ? "" : "s"}`];
 		if (state.total !== null) parts.push(`total ${state.total}`);
 		if (state.invalidCount > 0) parts.push(`${state.invalidCount} skipped (invalid contract)`);
+		if (state.eventsState === "stale") parts.push("refresh failed · showing last successful data");
 		if (isStale(state.eventsAt, Date.now(), STALE_AFTER_MS)) {
 			parts.push(`stale — last successful refresh ${formatTime(state.eventsAt)}`);
 		}
@@ -337,7 +357,7 @@ function updateEventsFooter() {
 		return;
 	}
 	if (state.eventsState === "unavailable") {
-		setText("events-summary", "Event history unavailable — the backend must provide GET /api/v1/events.");
+		setText("events-summary", "Event history unavailable — GET /api/v1/events is not available.");
 		return;
 	}
 	if (state.eventsState === "error") {
@@ -362,7 +382,18 @@ function renderEvents(result, loadedAt) {
 		}
 		setText("health-events", "Available (GET /api/v1/events)");
 		setState("health-events", "ok");
+		setIntegrationStatus("integration-events", `Loaded ${result.events.length} event${result.events.length === 1 ? "" : "s"} · PostgreSQL history`, "ok");
 		renderEventRows(result.events);
+		updateEventsFooter();
+		return;
+	}
+
+	if (state.events && state.eventsAt) {
+		state.eventsState = "stale";
+		const reason = result.state === "unavailable" ? "Endpoint unavailable" : "Refresh failed";
+		setText("health-events", `${reason} · showing last successful data`);
+		setState("health-events", "warn");
+		setIntegrationStatus("integration-events", `${reason} · showing last successful data`, "warn");
 		updateEventsFooter();
 		return;
 	}
@@ -377,11 +408,13 @@ function renderEvents(result, loadedAt) {
 	renderEventMessage(result.message, state.eventsState);
 	updateEventsFooter();
 	if (result.state === "unavailable") {
-		setText("health-events", "Unavailable — GET /api/v1/events is not implemented");
+		setText("health-events", "Unavailable — GET /api/v1/events");
 		setState("health-events", "unavailable");
+		setIntegrationStatus("integration-events", "Unavailable · GET /api/v1/events", "warn");
 	} else {
 		setText("health-events", "Could not load event history");
 		setState("health-events", "error");
+		setIntegrationStatus("integration-events", result.message, "error");
 	}
 }
 
@@ -390,6 +423,7 @@ function renderLatest() {
 	const inference = state.lastInference;
 
 	if (event) {
+		const eventDataStale = state.eventsState === "stale" || isStale(state.eventsAt, Date.now(), STALE_AFTER_MS);
 		setMetric(
 			"classification-value",
 			event.classificationLabel || "Unavailable",
@@ -414,20 +448,25 @@ function renderLatest() {
 		setMetric(
 			"latest-event-value",
 			formatTimestamp(event.receivedAt),
-			"ok",
+			eventDataStale ? "warn" : "ok",
 			"latest-event-detail",
-			`Device ${event.deviceId} · event ${event.eventId}`,
+			`Device ${event.deviceId} · event ${event.eventId}${eventDataStale ? " · last successful refresh is stale" : ""}`,
 		);
 
-		setText("monitoring-source", "Event history");
-		setState("monitoring-source", "ok");
+		setText("monitoring-source", eventDataStale ? "Event history · stale" : "Event history");
+		setState("monitoring-source", eventDataStale ? "warn" : "ok");
 		setMetric("monitor-classification", event.classificationLabel || "Unavailable", classificationState(event), "monitor-classification-meta", `Confident: ${event.classificationConfident ? "yes" : "no"} · status: ${event.classificationStatus}`);
 		setMetric("monitor-sound", soundLevelText(event), soundLevelState(event), "monitor-sound-meta", `Calibrated: ${event.soundLevelCalibrated ? "yes" : "no"} · status: ${event.soundLevelStatus}`);
 		setMetric("monitor-warning", event.warningTriggered ? "Triggered" : "Not triggered", event.warningTriggered ? "warn" : "ok", "monitor-warning-meta", "Decision returned by the backend warning policy.");
 		setMetric("monitor-reason", event.warningReason, event.warningTriggered ? "warn" : "ok", "monitor-reason-meta", "Exact reason code returned by the backend.");
 		setMetric("monitor-time", formatTimestamp(event.receivedAt), "ok", "monitor-time-meta", `Classification observed: ${formatTimestamp(event.classificationObservedAt)} · sound observed: ${formatTimestamp(event.soundLevelObservedAt)}`);
 		setMetric("monitor-sensor", event.sensorStatus, sensorState(event.sensorStatus), "monitor-sensor-meta", `Device ${event.deviceId}. Reported sensor status is not physical verification.`);
-		setText("monitoring-note", "Actual event returned by GET /api/v1/events. Warning decisions come from the backend; physical buzzer delivery is not verified.");
+		setText(
+			"monitoring-note",
+			eventDataStale
+				? "Showing the last successful event-history response; the latest refresh failed or is older than 60 seconds. Warning decisions remain backend-provided; physical buzzer delivery is not verified."
+				: "Actual event returned by GET /api/v1/events. Warning decisions come from the backend; physical buzzer delivery is not verified.",
+		);
 		return;
 	}
 
@@ -489,7 +528,7 @@ function renderLatest() {
 }
 
 function renderHistorySummary() {
-	if (state.eventsState !== "success" || !state.events) {
+	if (!["success", "stale"].includes(state.eventsState) || !state.events) {
 		const detail = state.eventsState === "unavailable"
 			? "Event history is unavailable from the current backend."
 			: state.eventsState === "error"
@@ -512,7 +551,13 @@ function renderHistorySummary() {
 
 	const summary = summarizeEvents(state.events);
 	const empty = state.events.length === 0;
-	setMetric("history-total", String(summary.total), "ok", "history-total-detail", empty ? "No events recorded yet." : "From the current event-history page.");
+	const latestIsStale = Boolean(state.latestEvent) && (
+		state.eventsState === "stale" || isStale(state.eventsAt, Date.now(), STALE_AFTER_MS)
+	);
+	const freshnessDetail = state.eventsState === "stale"
+		? "Last successful page; the latest refresh failed."
+		: empty ? "No events recorded yet." : "From the current event-history page.";
+	setMetric("history-total", String(summary.total), state.eventsState === "stale" ? "warn" : "ok", "history-total-detail", freshnessDetail);
 	setMetric("history-warnings", String(summary.warningsTriggered), "ok", "history-warnings-detail", "Backend warning decisions in the loaded events.");
 	setMetric("history-teacher", String(summary.teacherDiscussion), "ok", "history-teacher-detail", "Exact model label.");
 	setMetric("history-student", String(summary.studentConversation), "ok", "history-student-detail", "Exact model label.");
@@ -520,9 +565,11 @@ function renderHistorySummary() {
 	setMetric(
 		"history-latest",
 		state.latestEvent ? formatTimestamp(state.latestEvent.receivedAt) : "None",
-		state.latestEvent ? "ok" : "unavailable",
+		state.latestEvent ? (latestIsStale ? "warn" : "ok") : "unavailable",
 		"history-latest-detail",
-		state.latestEvent ? `Device ${state.latestEvent.deviceId}` : "No event timestamp available.",
+		state.latestEvent
+			? `Device ${state.latestEvent.deviceId}${latestIsStale ? " · last successful data" : ""}`
+			: "No event timestamp available.",
 	);
 }
 
@@ -584,7 +631,7 @@ async function loadDashboard({ quiet = false } = {}) {
 	}
 }
 
-async function loadEvents() {
+async function loadEvents(offset = state.offset) {
 	if (state.busy) return;
 	setBusy(true);
 	try {
@@ -592,18 +639,28 @@ async function loadEvents() {
 		if (!state.events) renderEventMessage("Loading event history…", "loading");
 		updateEventsFooter();
 		const loadedAt = new Date().toISOString();
-		const result = await fetchEvents({ fetchImpl: fetch, baseUrl: state.baseUrl, limit: state.limit, offset: state.offset });
+		const result = await fetchEvents({ fetchImpl: fetch, baseUrl: state.baseUrl, limit: state.limit, offset });
 		renderEvents(result, loadedAt);
 		renderLatest();
 		renderHistorySummary();
 		updateLastUpdated();
 		showToast(result.ok ? "Event history refreshed" : "Event history could not be refreshed");
 	} catch (error) {
-		state.eventsState = "error";
-		state.events = null;
-		state.latestEvent = null;
-		renderEventMessage(error?.message || "Event history could not be loaded.", "error");
+		if (state.events && state.eventsAt) {
+			state.eventsState = "stale";
+			setText("health-events", "Refresh failed · showing last successful data");
+			setState("health-events", "warn");
+			setIntegrationStatus("integration-events", "Refresh failed · showing last successful data", "warn");
+		} else {
+			state.eventsState = "error";
+			state.events = null;
+			state.latestEvent = null;
+			renderEventMessage(error?.message || "Event history could not be loaded.", "error");
+			setIntegrationStatus("integration-events", error?.message || "Could not load event history", "error");
+		}
 		updateEventsFooter();
+		renderHistorySummary();
+		updateLastUpdated();
 		showToast("Event history could not be refreshed");
 	} finally {
 		setBusy(false);
@@ -615,48 +672,13 @@ function exportEvents() {
 		showToast("No actual event data to export");
 		return;
 	}
-	const header = [
-		"event_id",
-		"device_id",
-		"received_at",
-		"classification",
-		"classification_confident",
-		"classification_status",
-		"classification_observed_at",
-		"sound_level_value",
-		"sound_level_unit",
-		"sound_level_calibrated",
-		"sound_level_status",
-		"sound_level_observed_at",
-		"warning_triggered",
-		"warning_reason",
-	];
-	const escape = (value) => {
-		const text = value === null || value === undefined ? "" : String(value);
-		return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
-	};
-	const rows = state.events.map((event) => [
-		event.eventId,
-		event.deviceId,
-		event.receivedAt,
-		event.classificationLabel ?? "",
-		event.classificationConfident,
-		event.classificationStatus,
-		event.classificationObservedAt ?? "",
-		event.soundLevelValue ?? "",
-		event.soundLevelUnit ?? "",
-		event.soundLevelCalibrated,
-		event.soundLevelStatus,
-		event.soundLevelObservedAt ?? "",
-		event.warningTriggered,
-		event.warningReason,
-	].map(escape).join(","));
-	const csv = [header.join(","), ...rows].join("\n");
+	const csv = serializeEventReportCsv(state.events);
 	const link = document.createElement("a");
-	link.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+	const objectUrl = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+	link.href = objectUrl;
 	link.download = "soniq-event-report.csv";
 	link.click();
-	URL.revokeObjectURL(link.href);
+	setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 	showToast("Actual event data exported");
 }
 
@@ -699,13 +721,11 @@ function initializeControls() {
 	byId("top-refresh")?.addEventListener("click", () => loadDashboard());
 	byId("events-refresh")?.addEventListener("click", () => loadEvents());
 	byId("events-prev")?.addEventListener("click", () => {
-		state.offset = Math.max(0, state.offset - state.limit);
-		loadEvents();
+		loadEvents(Math.max(0, state.offset - state.limit));
 	});
 	byId("events-next")?.addEventListener("click", () => {
 		if (!state.hasMore) return;
-		state.offset += state.limit;
-		loadEvents();
+		loadEvents(state.offset + state.limit);
 	});
 	byId("export-button")?.addEventListener("click", exportEvents);
 	byId("profile-button")?.addEventListener("click", () => showToast("Teacher account controls are not part of this prototype"));
@@ -721,6 +741,7 @@ function initializeControls() {
 		setBusy(true);
 		setText("inference-state", "Running");
 		setState("inference-state", "loading");
+		setIntegrationStatus("integration-classification", "Uploading WAV to backend", "loading");
 		setText("inference-message", "Sending the selected WAV to POST /api/v1/classify…");
 		byId("inference-result").hidden = true;
 		try {
@@ -749,17 +770,20 @@ function initializeControls() {
 				);
 				setText("inference-observed", formatTimestamp(result.observedAt));
 				byId("inference-result").hidden = false;
+				setIntegrationStatus("integration-classification", `Complete · ${result.classification}`, "ok");
 				renderLatest();
 				showToast("Actual model inference completed");
 			} else {
 				setText("inference-state", result.state === "model-unavailable" ? "Model unavailable" : "Failed");
 				setState("inference-state", result.state === "model-unavailable" ? "warn" : "error");
+				setIntegrationStatus("integration-classification", result.message, "error");
 				setText("inference-message", result.message);
 				byId("inference-result").hidden = true;
 			}
 		} catch (error) {
 			setText("inference-state", "Failed");
 			setState("inference-state", "error");
+			setIntegrationStatus("integration-classification", "Classification request failed", "error");
 			setText("inference-message", error?.message || "An unexpected error occurred while running inference.");
 			byId("inference-result").hidden = true;
 			showToast("Model inference failed");
@@ -781,11 +805,36 @@ function initialize() {
 	initializeControls();
 	updateEventsFooter();
 	loadDashboard();
+	startDashboardTimers();
+	window.addEventListener("pagehide", () => {
+		pageActive = false;
+		stopDashboardTimers();
+	});
+	window.addEventListener("pageshow", () => {
+		pageActive = true;
+		startDashboardTimers();
+	});
+	document.addEventListener("visibilitychange", () => {
+		if (document.hidden) {
+			stopDashboardTimers();
+			return;
+		}
+		startDashboardTimers();
+		loadDashboard({ quiet: true });
+	});
+}
 
-	setInterval(() => {
-		if (!document.hidden) loadDashboard({ quiet: true });
-	}, REFRESH_INTERVAL_MS);
-	setInterval(() => {
+function stopDashboardTimers() {
+	if (refreshTimer !== null) clearInterval(refreshTimer);
+	if (freshnessTimer !== null) clearInterval(freshnessTimer);
+	refreshTimer = null;
+	freshnessTimer = null;
+}
+
+function startDashboardTimers() {
+	if (!pageActive || document.hidden || refreshTimer !== null) return;
+	refreshTimer = setInterval(() => loadDashboard({ quiet: true }), REFRESH_INTERVAL_MS);
+	freshnessTimer = setInterval(() => {
 		updateLastUpdated();
 		updateEventsFooter();
 	}, 15000);

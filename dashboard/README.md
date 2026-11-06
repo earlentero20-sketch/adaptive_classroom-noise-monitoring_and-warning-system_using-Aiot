@@ -1,26 +1,10 @@
 # SONIQ Dashboard
 
-The dashboard is a static HTML/CSS/ES-module application. It has no build step
-and no package dependencies.
-
-## Run locally
-
-From the repository root, start the backend in one terminal:
-
-```powershell
-python -m backend.app
-```
-
-Serve the dashboard from a second terminal on a loopback origin:
-
-```powershell
-python -m http.server 8001 --bind 127.0.0.1 --directory dashboard
-```
-
-Open `http://127.0.0.1:8001/`.
-
-The backend grants browser CORS access only to loopback origins. Opening
-`index.html` as a `file:` URL is not supported for API access.
+The dashboard is a static HTML/CSS/ES-module application with no frontend
+build step or package dependencies. It reads event history and health from the
+SONIQ backend and sends user-selected WAV files to the existing classifier.
+It does not create example events, calculate warning decisions, or simulate
+readings.
 
 ## API configuration
 
@@ -28,99 +12,94 @@ The dashboard resolves the backend base URL in this order:
 
 1. `window.SONIQ_API_BASE_URL` (injected by a deployment).
 2. `<meta name="soniq-api-base" content="...">` in `index.html`.
-3. `?api=http://127.0.0.1:8000` on the dashboard URL (local development).
+3. The `api` query parameter (for example `?api=http://127.0.0.1:8000`).
 4. `http://127.0.0.1:8000`.
 
 Only `http:` and `https:` URLs without embedded credentials are accepted.
-No credentials are stored in the dashboard.
+No credentials are stored in the dashboard. The local backend grants browser
+CORS access only to loopback origins; serve this dashboard over HTTP rather
+than opening `index.html` as a `file:` URL.
 
-## Current API usage
+## Backend integration
 
 | Endpoint | Method | Dashboard use |
 |---|---|---|
 | `/health` | `GET` | Backend reachability and warning-configuration readiness. |
-| `/api/v1/classify` | `POST` | User-selected WAV classification. Warning and sound level are not evaluated by this endpoint. |
-| `/api/v1/events` | `GET` | Event history. **Not implemented by the current backend.** The dashboard shows an explicit Unavailable state for a 404/405/501 response. |
-| `/api/v1/events` | `POST` | Used only by the optional integration-check panel to send an empty contract sample. It is never used to create monitoring data for the overview. |
+| `/api/v1/events?limit=10&offset=0` | `GET` | Persisted PostgreSQL event history, newest first; pagination uses `limit` and `offset`. |
+| `/api/v1/classify` | `POST` | Selected WAV bytes with `Content-Type: audio/wav`; displays the exact returned class, optional uncalibrated model probability, model/evaluation state, and observation time. |
 
-The overview never invents sound levels, classifications, warning decisions, or
-event history. If the backend does not provide a value, the dashboard shows
-`Unavailable` or `Unknown`.
+The classify endpoint does not return a sound-level reading or evaluate
+warnings. Event warning decisions and reasons are displayed only from stored
+event responses. A warning shown in the UI is not evidence that an ESP32 or
+physical buzzer received it. Sensor status is shown only when an event provides
+it, and is not physical verification.
+CSV export is enabled only when actual event records are loaded. Spreadsheet
+formula-like text fields are exported as text.
+
+The backend has no WebSocket or Server-Sent Events stream. The dashboard polls
+health and the current event-history page every 30 seconds while visible.
+Health and event-history requests abort after 15 seconds; WAV classification
+requests abort after 120 seconds. Requests do not overlap; polling and stale-age
+timers stop when the page is hidden or left. Event data older than 60 seconds is
+marked stale. If a refresh fails after a successful read, the last successful
+records remain visible and are explicitly marked stale/refresh-failed.
 
 ## UI states
 
 - **Loading** — requests are in progress.
 - **Empty** — the backend returned an empty event list.
 - **Error** — a request failed or the response was malformed.
-- **Unavailable** — the backend does not provide the required endpoint/data.
-- **Stale** — the last successful refresh is older than 60 seconds.
+- **Unavailable** — the endpoint is missing or does not provide the required data.
+- **Stale** — retained data is old or the latest refresh failed.
 - **Success** — actual backend data is displayed.
-- **Unknown** — a warning decision cannot be determined from the available data.
+- **Unknown** — the backend did not provide a value or decision.
 
-## Files
+## Run locally
 
-- `index.html` — dashboard markup and accessible structure.
-- `dashboard.mjs` — presentation and UI state management.
-- `backend-adapter.mjs` — API validation, request handling, and contract checks.
-- `dashboard.css` — dashboard-specific layout and state styles.
-- `colors.css` — existing SONIQ visual system.
-- `backend-adapter.css` — integration-check panel styles.
-- `backend-adapter.test.mjs` — API adapter and contract `node:test` suite.
-- `dashboard.test.mjs` — presentation-state and exact-label `node:test` suite.
+The backend requires a configured PostgreSQL database and its schema migration.
+Follow [the PostgreSQL setup guide](../docs/POSTGRES_LOCAL.md) to create the
+project environment, install dependencies, configure `SONIQ_DATABASE_URL`, and
+apply migrations. Python does not load `.env` automatically; load the URL into
+the current PowerShell session without printing it:
 
-Run the dashboard tests with:
+```powershell
+$databaseLine = Get-Content .env | Where-Object { $_ -match '^SONIQ_DATABASE_URL=' } | Select-Object -First 1
+if (-not $databaseLine) { throw "SONIQ_DATABASE_URL is missing from .env" }
+$env:SONIQ_DATABASE_URL = $databaseLine.Substring('SONIQ_DATABASE_URL='.Length)
+.\.venv\Scripts\python.exe -m backend.app
+```
+
+This starts the database-backed API from the root project environment. Warning
+decisions remain disabled until Romeo confirms and configures the approved
+threshold and freshness window. WAV classification also remains unavailable
+until Earl supplies a compatible local model artifact and
+`SONIQ_AUDIO_MODEL_PATH` points to it. The optional `run_local_demo.ps1`
+launcher currently expects a separate `ml\.venv` and model artifact that are
+not present in this checkout; its hard-coded demo warning values also require
+project approval before use.
+
+In another terminal, serve the dashboard from the repository root:
+
+```powershell
+.\backend\run_local_demo.ps1
+```
+
+In another terminal, serve the dashboard:
+
+```powershell
+python -m http.server 8001 --bind 127.0.0.1 --directory dashboard
+```
+
+Open `http://127.0.0.1:8001/`. Confirm backend readiness at
+`http://127.0.0.1:8000/health`. PostgreSQL must be reachable for event-history
+requests; an unavailable database produces an API error, not an empty history.
+No real ESP32/hardware integration is implied by these local software checks.
+
+## Tests
 
 ```powershell
 node --test dashboard/backend-adapter.test.mjs dashboard/dashboard.test.mjs
 ```
 
-## Backend requirement for event history (owner: Romeo Gutang Jr.)
-
-The dashboard is ready to read event history, but the backend currently has no
-read/list route. To complete this integration, the backend needs a read-only
-endpoint such as:
-
-```http
-GET /api/v1/events?limit=10&offset=0
-```
-
-A response shape compatible with the dashboard adapter is:
-
-```json
-{
-  "schema_version": "1.0",
-  "events": [
-    {
-      "schema_version": "1.0",
-      "event_id": "event-unique-id",
-      "device_id": "device-unique-id",
-      "received_at": "2026-11-05T04:00:00Z",
-      "connection_status": { "backend": "online", "sensor": "unknown" },
-      "classification": {
-        "label": "Teacher Discussion",
-        "confident": true,
-        "status": "fresh",
-        "observed_at": "2026-11-05T04:00:00Z"
-      },
-      "sound_level": {
-        "value": 64.2,
-        "unit": "dB_SPL",
-        "calibrated": true,
-        "status": "fresh",
-        "observed_at": "2026-11-05T04:00:00Z"
-      },
-      "warning": { "triggered": false, "reason": "teacher_discussion" }
-    }
-  ],
-  "pagination": { "total": 42, "has_more": true }
-}
-```
-
-Each event must use the existing event-response contract and the exact
-classification labels `Teacher Discussion` and `Student Conversation`. The
-dashboard also accepts a bare JSON array of events; pagination metadata is
-optional but recommended.
-
-This contract is a dashboard requirement, not a claim that the endpoint exists.
-Romeo should confirm the final route, ordering (newest first), page-size limits,
-and pagination field names before the dashboard treats the integration as final.
+Adapter tests use controlled response fixtures for API contract and UI logic;
+they are not live database, ML artifact, or hardware integration tests.

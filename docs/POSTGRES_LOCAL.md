@@ -5,6 +5,42 @@ processed event response supplied by `backend.app.process_event()` and does
 not repeat validation, timestamp freshness checks, or warning calculations.
 Normal backend startup does not run schema migrations.
 
+## Windows PostgreSQL installation
+
+The repository does not specify a PostgreSQL database name or application
+role. Its current migration creates `events` plus the migration runner's
+`schema_migrations` table in whichever database is selected by
+`SONIQ_DATABASE_URL`; it does not create a database or login role.
+
+As of November 2026, PostgreSQL 18.6 is the current supported major release.
+The official PostgreSQL Windows download page links to the EDB interactive
+installer. After confirming that PostgreSQL is not already installed, an
+administrator can install the current 18.x package with:
+
+```powershell
+winget install --id PostgreSQL.PostgreSQL.18 --exact --version 18.6-5
+```
+
+In the installer, keep the default local port `5432`, install the command-line
+tools and pgAdmin, and set a private password for the initial `postgres`
+administrator. Do not put that password in a command, source file, or chat.
+PostgreSQL's supported versions and Windows installer are listed at
+[PostgreSQL versioning](https://www.postgresql.org/support/versioning/) and
+[PostgreSQL for Windows](https://www.postgresql.org/download/windows/).
+
+For the application connection, create a non-superuser login role named
+`soniq_app` and a database named `soniq_local` owned by that role (these are
+local setup choices, not names mandated by the code). Set the role's password
+in pgAdmin's role dialog. In pgAdmin, create the database with owner
+`soniq_app`. Do not use the `postgres` administrator login for the app. The
+database role needs to be able to create the tables in its own database so the
+project migration can run.
+
+Confirm the service is running in Windows Services and that port 5432 is
+listening. For a database connection check, use pgAdmin's Query Tool or run
+`psql -h 127.0.0.1 -p 5432 -U soniq_app -d soniq_local -c "select current_database();"`
+and enter the password only at the prompt.
+
 ## Dependencies
 
 Install the existing ML dependencies and the backend database driver from the
@@ -15,9 +51,39 @@ py -m venv ml/.venv
 .\ml\.venv\Scripts\python.exe -m pip install -r ml/requirements.txt -r backend/requirements.txt
 ```
 
-The backend requirement uses Psycopg 3 with its binary implementation and
+The repository's root `.venv` may be used if it already exists; the
+`run_local_demo.ps1` helper specifically expects a separate `ml/.venv`.
+Activate the chosen environment before running `python -m backend.app`. The
+backend requirement uses Psycopg 3 with its binary implementation and
 connection-pool extra. The synchronous pool suits the current synchronous
 backend. Pool connection contexts commit on success and roll back on errors.
+
+## Environment file and connection settings
+
+Copy `.env.example` to `.env`, then replace the URL's `USER`, `PASSWORD`, and
+`DATABASE` with the actual local role, its password, and database name. URL
+encode reserved characters in the username or password. `.env` is ignored by
+Git; `.env.example` is the safe placeholder template.
+
+The Python backend does **not** automatically load `.env`. In each PowerShell
+window where you run the migration or backend, load its simple `KEY=value`
+entries into that process without echoing their values:
+
+```powershell
+Get-Content .env | ForEach-Object {
+    $line = $_.Trim()
+    if ($line -match '^([A-Za-z_][A-Za-z0-9_]*)=(.*)$') {
+        [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process')
+    }
+}
+if ([string]::IsNullOrWhiteSpace($env:SONIQ_DATABASE_URL)) {
+    throw "SONIQ_DATABASE_URL was not loaded"
+}
+```
+
+Keep the `.env` file private and do not paste its contents into chat or
+terminal commands. To verify configuration without disclosing it, print only
+whether `SONIQ_DATABASE_URL` is set.
 
 ## Local preflight without connecting to PostgreSQL
 
@@ -38,8 +104,9 @@ PostgreSQL connection pool opens and the server reports its listening address.
 
 ## Connection settings
 
-Provide `SONIQ_DATABASE_URL` through a local environment variable or deployment
-secret. Do not put a real password in source control. The URL format is:
+Set `SONIQ_DATABASE_URL` from the local `.env` instructions above. Never put a
+real password in source control. Use the actual host, port, role, and database
+you created; the repository does not choose a database name.
 
 ```text
 postgresql://USER:PASSWORD@HOST:PORT/DATABASE
@@ -52,11 +119,12 @@ hosting provider's TLS settings for remote database connections.
 
 ## Create or update the schema
 
-Run the migration command once as a deployment step, before starting or
-updating backend instances:
+Run the migration command once before starting the backend. From the project
+root, activate `.venv` if it is the existing configured environment:
 
 ```powershell
-.\ml\.venv\Scripts\python.exe -m backend.migrate
+.\.venv\Scripts\Activate.ps1
+python -m backend.migrate
 ```
 
 It applies ordered SQL files from `backend/migrations/`, records each filename
@@ -65,8 +133,9 @@ migration. A PostgreSQL advisory lock prevents two migration commands from
 applying the same change simultaneously. Do not run this command independently
 from each application instance.
 
-The current migration creates event storage and history indexes. It does not
-delete old events.
+The existing `backend/migrations/001_create_events.sql` creates the
+`events` table and its history indexes. The migration runner records applied
+versions and checksums in `schema_migrations`. It does not delete old events.
 
 ### Retention proposal (no cleanup implemented)
 
@@ -88,15 +157,17 @@ Any automated schedule and actual deletion remain pending approval.
 
 ## Start the backend and check health
 
-After the database owner approves the database target and the migration has
-completed, launch from the repository root:
+After the migration has completed, load `.env` in the same PowerShell window,
+activate `.venv`, and launch from the repository root:
 
-    .\backend\run_local_demo.ps1
+    python -m backend.app
 
-The launcher uses the same project interpreter at ml/.venv, checks the local
-model, then starts backend.app. It requires SONIQ_DATABASE_URL and startup is
-not verified until the connection pool opens and the listening message appears.
-In another PowerShell terminal, check the process endpoint:
+The direct backend entry point requires the database connection, but the
+model is loaded only when classification is requested. The helper script
+`backend/run_local_demo.ps1` also performs a model-artifact preflight and
+expects `ml/.venv`; the command above uses the existing root `.venv` instead.
+Startup is successful only after the PostgreSQL pool opens and the server
+reports its listening address. In another terminal, check health:
 
     Invoke-RestMethod http://127.0.0.1:8000/health | ConvertTo-Json -Depth 5
 

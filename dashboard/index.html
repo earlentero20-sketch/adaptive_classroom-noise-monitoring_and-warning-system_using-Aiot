@@ -225,6 +225,19 @@
 					</article>
 				</section>
 
+				<section class="panel backend-check-panel" id="integration" aria-labelledby="integration-title">
+					<div class="panel-header">
+						<div><div class="panel-kicker">API INTEGRATION</div><h2 id="integration-title">Backend data sources</h2></div>
+						<span class="state-chip" id="integration-state" data-state="idle">Not checked</span>
+					</div>
+					<dl class="integration-list">
+						<div><dt><code>GET /health</code></dt><dd id="integration-health" data-state="idle">Not checked</dd></div>
+						<div><dt><code>GET /api/v1/events?limit=10&amp;offset=0</code></dt><dd id="integration-events" data-state="idle">Not checked</dd></div>
+						<div><dt><code>POST /api/v1/classify</code></dt><dd id="integration-classification" data-state="idle">No WAV submitted</dd></div>
+					</dl>
+					<p class="inline-note">Event history is read from PostgreSQL and refreshed every 30 seconds while this page is visible. The backend has no live-stream endpoint. Classification is a manual WAV upload; it does not produce a sound-level reading or warning decision. A backend warning does not verify physical buzzer operation.</p>
+				</section>
+
 				<footer class="page-footer">
 					<span>SONIQ <i></i> SMART CLASSROOM NOISE MONITORING</span>
 					<span>Warning policy and thresholds are owned by the backend.</span>
@@ -233,7 +246,6 @@
 		</main>
 	</div>
 	<div class="toast" id="toast" role="status" aria-live="polite"></div>
-	<script type="module" src="backend-adapter.mjs?v=audio-inference"></script>
 	<script type="module" src="dashboard.mjs"></script>
 </body>
 </html>

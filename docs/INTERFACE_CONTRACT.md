@@ -217,12 +217,15 @@ dashboard automatically. Team review is required before treating this
 contract, the freshness setting, confidence rule, or warning threshold as
 final.
 
-For the local dashboard adapter, serve `dashboard/` on a loopback HTTP origin
-(for example, `http://127.0.0.1:8001`). The backend grants browser CORS access
-only to `localhost`, `127.0.0.1`, or `::1` origins; the event endpoint accepts
-the JSON `POST` preflight from those origins. Opening the HTML as a `file:` URL
-is not supported for API access. This local-development allowance does not
-make the server suitable for network deployment.
+For the local dashboard, serve `dashboard/` on a loopback HTTP origin (for
+example, `http://127.0.0.1:8001`). The backend grants browser CORS access only
+to `localhost`, `127.0.0.1`, or `::1` origins. Opening the HTML as a `file:`
+URL is not supported for API access. The dashboard reads `GET /health` and
+paginated `GET /api/v1/events`, and submits WAV bytes to
+`POST /api/v1/classify`; it does not post empty/example events. The backend
+does not currently expose WebSockets or Server-Sent Events, so the dashboard
+polls while visible. This local-development allowance does not make the
+server suitable for network deployment.
 
 ## Local development
 
@@ -238,11 +241,12 @@ Serve the dashboard from a second terminal:
 python -m http.server 8001 --bind 127.0.0.1 --directory dashboard
 ```
 
-Open `http://127.0.0.1:8001/`. The dashboard's existing SAMPLE DATA values
-remain simulated. The integration panel's health status is an actual response
-from the local backend; its empty contract request contains no audio or sensor
-readings, and its response does not prove that hardware is present. Interpret
-backend reachability, warning-configuration readiness, and device-reported
-sensor status as three separate things. In this provisional phase, hardware
-status remains unknown unless an event explicitly reports a sensor state, and
-even a reported state is not physical verification.
+Open `http://127.0.0.1:8001/`. The dashboard displays actual health and event
+responses, and actual WAV classification responses. It has no mock readings,
+event samples, or frontend warning simulation. Interpret backend reachability,
+warning-configuration readiness, and device-reported sensor status as three
+separate things. Hardware status remains unknown unless an event explicitly
+reports a sensor state, and even a reported state is not physical verification.
+Event history refreshes every 30 seconds while the dashboard is visible;
+stale data is retained and labelled if a later refresh fails. For dashboard
+setup and test commands, see `dashboard/README.md`.
