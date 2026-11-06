@@ -12,14 +12,14 @@ from urllib.error import HTTPError
 import wave
 from urllib.parse import urlsplit
 
-from backend.app import BackendConfig, ConfiguredHTTPServer, process_event
+from backend.app import BackendConfig, ConfiguredHTTPServer, main, process_event
 from backend.postgres_event_repository import DuplicateEventError, EventStorageError
 
 
 NOW = datetime(2026, 10, 11, 4, 0, tzinfo=timezone.utc)
 
 
-def event_payload(*, classification="Student Conversation", level=75.0):
+def event_payload(*, classification="Student Conversation", level=76.0):
     observed = NOW.isoformat().replace("+00:00", "Z")
     return {
         "schema_version": "1.0",
@@ -71,7 +71,7 @@ def raw_post(base_url, path, headers, body=b"", *, shutdown_write=False):
 
 class ProcessEventTests(unittest.TestCase):
     def setUp(self):
-        self.config = BackendConfig(warning_threshold_db_spl=70.0, max_input_age_seconds=30.0)
+        self.config = BackendConfig(warning_threshold_db_spl=75.0, max_input_age_seconds=30.0)
 
     def test_valid_student_conversation_and_level_above_fixture_threshold_warns(self):
         response = process_event(event_payload(), self.config, now=NOW)
@@ -107,8 +107,8 @@ class ProcessEventTests(unittest.TestCase):
         for config, expected_reason in (
             (BackendConfig(warning_threshold_db_spl=0, max_input_age_seconds=30), "threshold_invalid"),
             (BackendConfig(warning_threshold_db_spl=-1, max_input_age_seconds=30), "threshold_invalid"),
-            (BackendConfig(warning_threshold_db_spl=70, max_input_age_seconds=0), "freshness_window_invalid"),
-            (BackendConfig(warning_threshold_db_spl=70, max_input_age_seconds=-1), "freshness_window_invalid"),
+            (BackendConfig(warning_threshold_db_spl=75, max_input_age_seconds=0), "freshness_window_invalid"),
+            (BackendConfig(warning_threshold_db_spl=75, max_input_age_seconds=-1), "freshness_window_invalid"),
         ):
             with self.subTest(config=config):
                 response = process_event(event_payload(), config, now=NOW)
@@ -117,7 +117,7 @@ class ProcessEventTests(unittest.TestCase):
 
     def test_configuration_marked_invalid_cannot_trigger_even_if_numeric_values_exist(self):
         config = BackendConfig(
-            warning_threshold_db_spl=70,
+            warning_threshold_db_spl=75,
             max_input_age_seconds=30,
             warning_threshold_status="configured",
             freshness_window_status="invalid",
@@ -128,7 +128,7 @@ class ProcessEventTests(unittest.TestCase):
 
     def test_warning_stays_off_when_freshness_window_is_unconfigured(self):
         response = process_event(
-            event_payload(), BackendConfig(warning_threshold_db_spl=70.0), now=NOW
+            event_payload(), BackendConfig(warning_threshold_db_spl=75.0), now=NOW
         )
         self.assertFalse(response["warning"]["triggered"])
         self.assertEqual(response["warning"]["reason"], "freshness_window_unconfigured")
@@ -160,6 +160,39 @@ class ProcessEventTests(unittest.TestCase):
         )
         self.assertFalse(response["warning"]["triggered"])
         self.assertEqual(response["warning"]["reason"], "teacher_discussion")
+
+    def test_warning_threshold_is_strictly_above_75_db_spl(self):
+        at_threshold = process_event(event_payload(level=75.0), self.config, now=NOW)
+        above_threshold = process_event(event_payload(level=75.01), self.config, now=NOW)
+        self.assertFalse(at_threshold["warning"]["triggered"])
+        self.assertEqual(at_threshold["warning"]["reason"], "below_threshold")
+        self.assertTrue(above_threshold["warning"]["triggered"])
+
+    def test_measurement_exactly_30_seconds_old_is_fresh(self):
+        payload = event_payload(level=75.01)
+        observed = (NOW - timedelta(seconds=30)).isoformat().replace("+00:00", "Z")
+        payload["sound_level"]["observed_at"] = observed
+        payload["classification"]["observed_at"] = observed
+        response = process_event(payload, self.config, now=NOW)
+        self.assertEqual(response["sound_level"]["status"], "fresh")
+        self.assertTrue(response["warning"]["triggered"])
+
+    def test_configuration_cannot_weaken_warning_limits(self):
+        for config, reason in (
+            (BackendConfig(warning_threshold_db_spl=74.99, max_input_age_seconds=30), "threshold_invalid"),
+            (BackendConfig(warning_threshold_db_spl=75, max_input_age_seconds=30.01), "freshness_window_invalid"),
+        ):
+            with self.subTest(config=config):
+                response = process_event(event_payload(), config, now=NOW)
+                self.assertFalse(response["warning"]["triggered"])
+                self.assertEqual(response["warning"]["reason"], reason)
+
+    def test_uncalibrated_sound_level_does_not_warn(self):
+        payload = event_payload(level=90.0)
+        payload["sound_level"]["calibrated"] = False
+        response = process_event(payload, self.config, now=NOW)
+        self.assertFalse(response["warning"]["triggered"])
+        self.assertEqual(response["warning"]["reason"], "sound_level_uncalibrated")
 
     def test_invalid_class_and_sound_units_are_rejected(self):
         payload = event_payload(classification="Other")
@@ -194,7 +227,7 @@ class ProcessEventTests(unittest.TestCase):
                 with self.subTest(field=field, value=invalid_value):
                     with patch.dict("os.environ", {
                         field: invalid_value,
-                        other_field: "30" if other_field == "MAX_INPUT_AGE_SECONDS" else "70",
+                        other_field: "30" if other_field == "MAX_INPUT_AGE_SECONDS" else "75",
                     }, clear=True):
                         config = BackendConfig.from_environment()
                     self.assertIsNone(getattr(config, "warning_threshold_db_spl" if field == "WARNING_THRESHOLD_DB_SPL" else "max_input_age_seconds"))
@@ -214,6 +247,13 @@ class ProcessEventTests(unittest.TestCase):
         self.assertEqual(config.freshness_window_status, "missing")
         response = process_event(event_payload(), config, now=NOW)
         self.assertFalse(response["warning"]["triggered"])
+
+
+class LocalBindTests(unittest.TestCase):
+    def test_main_refuses_non_loopback_bind_before_database_setup(self):
+        with patch.dict("os.environ", {"BACKEND_HOST": "0.0.0.0"}, clear=True):
+            with self.assertRaisesRegex(SystemExit, "loopback"):
+                main()
 
 
 class FakeEventRepository:

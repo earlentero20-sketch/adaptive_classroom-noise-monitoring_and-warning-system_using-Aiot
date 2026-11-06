@@ -88,9 +88,9 @@ warning object:
 
 No threshold value is returned to the dashboard. A warning can be requested
 only when the class is a confident `Student Conversation`, the sound reading
-is fresh, calibrated, and in `dB_SPL`, and the backend has an explicitly
-configured threshold that the reading strictly exceeds. `Teacher Discussion`
-never triggers this buzzer rule.
+is calibrated and in `dB_SPL`, its measurement age is no more than 30 seconds,
+and the reading is strictly greater than 75 dB SPL. Exactly 75 dB SPL does not
+trigger a warning. `Teacher Discussion` never triggers this buzzer rule.
 
 ## Event history
 
@@ -142,18 +142,17 @@ If PostgreSQL is unavailable or retrieval fails, the endpoint returns HTTP
 
 ## Freshness and configuration
 
-The backend has no default sound threshold and no default input freshness
-window. Configure them explicitly using `WARNING_THRESHOLD_DB_SPL` and
-`MAX_INPUT_AGE_SECONDS`. Both must be finite, positive numbers. Missing,
-malformed, non-finite, zero, or negative values are reported as missing or
-invalid, and warning decisions remain off. `/health` still reports the
-reachable backend process as online while separately reporting that warning
-configuration is not ready.
-The max-age setting is an operational freshness choice, not a calibrated sound
-threshold. Readings with missing timestamps, stale timestamps, future times,
-unknown units, invalid numbers, or uncalibrated status cannot trigger a
-warning. Invalid request shapes receive a structured HTTP 400 response;
-requests without the `application/json` media type receive HTTP 415.
+The backend requires `WARNING_THRESHOLD_DB_SPL` and `MAX_INPUT_AGE_SECONDS` to
+be explicitly configured. Values must be finite and positive; the threshold
+must be at least 75 and the maximum age must be no more than 30 seconds. Missing,
+malformed, non-finite, zero, negative, below-policy, or above-policy values are
+reported as missing or invalid, and warning decisions remain off. More
+restrictive values are allowed. `/health` reports the reachable backend process
+as online while separately reporting warning configuration readiness.
+Readings with missing timestamps, age greater than the configured maximum,
+future times, unknown units, invalid numbers, or uncalibrated status cannot
+trigger a warning. Invalid request shapes receive a structured HTTP 400
+response; requests without the `application/json` media type receive HTTP 415.
 
 ## Provisional local audio inference adapter
 
@@ -213,9 +212,11 @@ are approved.
 
 The server binds to `127.0.0.1:8000` by default for local development. This is
 not a secured network deployment and does not connect to firmware or the
-dashboard automatically. Team review is required before treating this
-contract, the freshness setting, confidence rule, or warning threshold as
-final.
+dashboard automatically. The project warning limits are fixed at a reading
+strictly above 75 dB SPL and a maximum measurement age of 30 seconds; configured
+values may make those limits stricter, never weaker. The broader interface and
+classification-confidence rule remain proposed and require component-owner
+review before network or hardware integration.
 
 For the local dashboard, serve `dashboard/` on a loopback HTTP origin (for
 example, `http://127.0.0.1:8001`). The backend grants browser CORS access only

@@ -37,6 +37,8 @@ from backend.postgres_event_repository import (
 
 SCHEMA_VERSION = "1.0"
 SOUND_LEVEL_UNIT = "dB_SPL"
+MIN_WARNING_THRESHOLD_DB_SPL = 75.0
+MAX_MEASUREMENT_AGE_SECONDS = 30.0
 SENSOR_STATUSES = ("online", "offline", "unknown")
 MAX_AUDIO_REQUEST_BYTES = 32 * 1024 * 1024
 MAX_EVENT_REQUEST_BYTES = 1024 * 1024
@@ -233,13 +235,17 @@ def _warning_decision(
     if sound_status != "fresh":
         return WarningDecision(False, sound_freshness_reason)
     freshness_status = _configuration_value_status(
-        config.max_input_age_seconds, config.freshness_window_status
+        config.max_input_age_seconds,
+        config.freshness_window_status,
+        maximum=MAX_MEASUREMENT_AGE_SECONDS,
     )
     if freshness_status != "configured":
         reason = "freshness_window_unconfigured" if freshness_status == "missing" else "freshness_window_invalid"
         return WarningDecision(False, reason)
     threshold_status = _configuration_value_status(
-        config.warning_threshold_db_spl, config.warning_threshold_status
+        config.warning_threshold_db_spl,
+        config.warning_threshold_status,
+        minimum=MIN_WARNING_THRESHOLD_DB_SPL,
     )
     if threshold_status != "configured":
         reason = "threshold_unconfigured" if threshold_status == "missing" else "threshold_invalid"
@@ -377,22 +383,36 @@ def _environment_positive_number(name: str) -> tuple[float | None, str]:
     return value, "configured"
 
 
-def _configuration_value_status(value: Any, source_status: str | None) -> str:
+def _configuration_value_status(
+    value: Any,
+    source_status: str | None,
+    *,
+    minimum: float | None = None,
+    maximum: float | None = None,
+) -> str:
     if source_status in ("missing", "invalid"):
         return source_status
     if value is None:
         return "missing"
     if not _finite_number(value) or value <= 0:
         return "invalid"
+    if minimum is not None and value < minimum:
+        return "invalid"
+    if maximum is not None and value > maximum:
+        return "invalid"
     return "configured"
 
 
 def _warning_configuration(config: BackendConfig) -> dict[str, Any]:
     threshold_status = _configuration_value_status(
-        config.warning_threshold_db_spl, config.warning_threshold_status
+        config.warning_threshold_db_spl,
+        config.warning_threshold_status,
+        minimum=MIN_WARNING_THRESHOLD_DB_SPL,
     )
     freshness_status = _configuration_value_status(
-        config.max_input_age_seconds, config.freshness_window_status
+        config.max_input_age_seconds,
+        config.freshness_window_status,
+        maximum=MAX_MEASUREMENT_AGE_SECONDS,
     )
     reasons = []
     if threshold_status != "configured":
@@ -712,6 +732,16 @@ def _is_loopback_origin(origin: str) -> bool:
         return False
 
 
+def _is_loopback_host(host: str) -> bool:
+    if host == "localhost":
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.version == 4 and address.is_loopback
+
+
 class ConfiguredHTTPServer(HTTPServer):
     def __init__(
         self,
@@ -729,6 +759,8 @@ class ConfiguredHTTPServer(HTTPServer):
 
 def main() -> None:
     host = os.environ.get("BACKEND_HOST", "127.0.0.1")
+    if not _is_loopback_host(host):
+        raise SystemExit("BACKEND_HOST must be a loopback address for local development")
     port_text = os.environ.get("BACKEND_PORT", "8000")
     try:
         port = int(port_text)
