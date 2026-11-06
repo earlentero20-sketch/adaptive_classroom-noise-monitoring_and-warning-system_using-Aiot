@@ -1,0 +1,5 @@
+clip_id,relative_path,label,original_recording_id,source_id,source_type,source_reference,license_id,license_reference,approval_status,approval_reference,consent_ref,privacy_review_ref,annotation_status,annotation_review_ref
+StudentConversation.wav,audio/recordings/StudentConversation.wav,Student Conversation,StudentConversation.wav,classroom_collection,classroom,,,,approved,,,,pending,
+StudentConversation2.wav,audio/recordings/StudentConversation2.wav,Student Conversation,StudentConversation2.wav,classroom_collection,classroom,,,,approved,,,,pending,
+Teacher-Discussion.wav,audio/recordings/Teacher-Discussion.wav,Teacher Discussion,Teacher-Discussion.wav,classroom_collection,classroom,,,,approved,,,,pending,
+Teacher-Discussion2.wav,audio/recordings/Teacher-Discussion2.wav,Teacher Discussion,Teacher-Discussion2.wav,classroom_collection,classroom,,,,approved,,,,pending,
