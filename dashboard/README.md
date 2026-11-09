@@ -54,46 +54,50 @@ records remain visible and are explicitly marked stale/refresh-failed.
 - **Success** — actual backend data is displayed.
 - **Unknown** — the backend did not provide a value or decision.
 
-## Run locally
+## Run locally on Windows
 
-The backend requires a configured PostgreSQL database and its schema migration.
-Follow [the PostgreSQL setup guide](../docs/POSTGRES_LOCAL.md) to create the
-project environment, install dependencies, configure `SONIQ_DATABASE_URL`, and
-apply migrations. Python does not load `.env` automatically; load the URL into
-the current PowerShell session without printing it:
+The dashboard is static and has no build or package-install step. From the
+repository root, run:
 
 ```powershell
-$databaseLine = Get-Content .env | Where-Object { $_ -match '^SONIQ_DATABASE_URL=' } | Select-Object -First 1
-if (-not $databaseLine) { throw "SONIQ_DATABASE_URL is missing from .env" }
-$env:SONIQ_DATABASE_URL = $databaseLine.Substring('SONIQ_DATABASE_URL='.Length)
-.\.venv\Scripts\python.exe -m backend.app
+.\start_soniq.bat
 ```
 
-This starts the database-backed API from the root project environment. Warning
-decisions remain disabled until Romeo confirms and configures the approved
-threshold and freshness window. WAV classification also remains unavailable
-until Earl supplies a compatible local model artifact and
-`SONIQ_AUDIO_MODEL_PATH` points to it. The optional `run_local_demo.ps1`
-launcher currently expects a separate `ml\.venv` and model artifact that are
-not present in this checkout; its hard-coded demo warning values also require
-project approval before use.
+This opens the dashboard server in a separate window at
+`http://127.0.0.1:8001/` and runs the backend in the current window at
+`http://127.0.0.1:8000/`. The batch launcher does not invoke PowerShell or
+change Windows execution policy. Its Python helper loads only documented
+SONIQ variables from `.env` into the backend process without printing values.
+Existing process environment values take precedence over `.env`.
 
-In another terminal, serve the dashboard from the repository root:
+The launcher uses a valid root `.venv` first, then `ml/.venv`. It does not
+install packages, replace an environment, or silently use global Python. If
+neither project environment is usable, create a fresh root environment and
+install the declared backend/ML requirements:
 
 ```powershell
-.\backend\run_local_demo.ps1
+py -3 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r ml\requirements.txt -r backend\requirements.txt
 ```
 
-In another terminal, serve the dashboard:
+Configure a private `.env` from `.env.example` if PostgreSQL is ready; do not
+commit real credentials. The backend starts in degraded mode when PostgreSQL
+is unavailable: health can respond, while event history and submission show a
+storage error. WAV classification requires `SONIQ_AUDIO_MODEL_PATH` to point
+at a trusted compatible local artifact; this launcher does not auto-select a
+model. The dashboard displays actual backend responses and explicit empty,
+loading, stale, unavailable, and error states; it does not create events or
+calculate classifications or warnings.
 
-```powershell
-python -m http.server 8001 --bind 127.0.0.1 --directory dashboard
-```
+To stop the backend, press Ctrl+C in its window. Close the dashboard server
+window to stop static serving. For database setup and migrations, see [the
+PostgreSQL guide](../docs/POSTGRES_LOCAL.md). For ESP32 LAN setup, see [the LAN
+guide](../docs/LAN_CONNECTIVITY.md).
 
-Open `http://127.0.0.1:8001/`. Confirm backend readiness at
-`http://127.0.0.1:8000/health`. PostgreSQL must be reachable for event-history
-requests; an unavailable database produces an API error, not an empty history.
-No real ESP32/hardware integration is implied by these local software checks.
+The dashboard defaults to backend URL `http://127.0.0.1:8000`. For another
+local backend URL, use the `api` query parameter, for example
+`http://127.0.0.1:8001/?api=http://127.0.0.1:8002`. Browser CORS remains
+loopback-only, and classification remains a loopback-only API route.
 
 ## Tests
 

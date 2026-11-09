@@ -6,7 +6,7 @@ from pathlib import Path
 import socket
 from threading import Thread
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 import wave
@@ -47,6 +47,17 @@ def audio_fixture_bytes():
         wav.setsampwidth(2)
         wav.setframerate(8000)
         wav.writeframes(b"\0\0" * 800)
+    return output.getvalue()
+
+
+def long_audio_fixture_bytes(seconds=181):
+    """Synthetic zero PCM used only to test the request-duration guard."""
+    output = BytesIO()
+    with wave.open(output, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(1)
+        wav.writeframes(b"\0\0" * seconds)
     return output.getvalue()
 
 
@@ -250,10 +261,77 @@ class ProcessEventTests(unittest.TestCase):
 
 
 class LocalBindTests(unittest.TestCase):
-    def test_main_refuses_non_loopback_bind_before_database_setup(self):
-        with patch.dict("os.environ", {"BACKEND_HOST": "0.0.0.0"}, clear=True):
-            with self.assertRaisesRegex(SystemExit, "loopback"):
+    def test_main_binds_to_private_lan_address_from_environment(self):
+        repository = Mock()
+
+        class StubServer:
+            constructed_addresses = []
+
+            def __init__(self, address, config, *, event_repository):
+                self.address = address
+                self.__class__.constructed_addresses.append(address)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def serve_forever(self):
+                return None
+
+        with (
+            patch.dict(
+                "os.environ",
+                {"BACKEND_HOST": "0.0.0.0", "BACKEND_PORT": "8123"},
+                clear=True,
+            ),
+            patch("backend.app.PostgresEventRepository.from_environment", return_value=repository),
+            patch("backend.app.ConfiguredHTTPServer", StubServer) as server_class,
+        ):
+            main()
+
+        self.assertEqual(StubServer.constructed_addresses, [("0.0.0.0", 8123)])
+        repository.close.assert_called_once_with()
+
+    def test_main_rejects_public_bind_address_before_database_setup(self):
+        with patch.dict("os.environ", {"BACKEND_HOST": "8.8.8.8"}, clear=True):
+            with self.assertRaisesRegex(SystemExit, "private IPv4"):
                 main()
+
+    def test_main_starts_degraded_when_postgres_is_unavailable(self):
+        observed = {}
+
+        class StubServer:
+            def __init__(self, address, config, *, event_repository):
+                observed["address"] = address
+                observed["repository"] = event_repository
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def serve_forever(self):
+                return None
+
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(
+                "backend.app.PostgresEventRepository.from_environment",
+                side_effect=RuntimeError("connection details must not be logged"),
+            ),
+            patch("backend.app.ConfiguredHTTPServer", StubServer),
+            patch("builtins.print") as print_mock,
+        ):
+            main()
+
+        self.assertEqual(observed["address"], ("127.0.0.1", 8000))
+        self.assertIsNone(observed["repository"])
+        output = " ".join(str(call) for call in print_mock.call_args_list)
+        self.assertIn("degraded mode", output)
+        self.assertNotIn("connection details", output)
 
 
 class FakeEventRepository:
@@ -760,6 +838,34 @@ class AudioClassificationHTTPTests(unittest.TestCase):
         body = json.loads(caught.exception.read())
         self.assertEqual(caught.exception.code, 400)
         self.assertEqual(body["error"]["code"], "invalid_audio")
+
+    def test_wav_over_three_minutes_is_rejected_before_inference(self):
+        class MustNotRunModel:
+            def classify_wav_bytes(self, payload):
+                raise AssertionError("over-duration audio reached inference")
+
+        self.server.audio_model = MustNotRunModel()
+        with self.assertRaises(HTTPError) as caught:
+            self.request_audio(long_audio_fixture_bytes())
+        body = json.loads(caught.exception.read())
+        self.assertEqual(caught.exception.code, 400)
+        self.assertEqual(body["error"]["code"], "invalid_audio")
+        self.assertIn("180 seconds", body["error"]["message"])
+
+    def test_wav_at_three_minute_limit_reaches_inference(self):
+        class ControlledTestModel:
+            def classify_wav_bytes(self, payload):
+                return {
+                    "label": "Teacher Discussion",
+                    "model_confidence": None,
+                    "artifact_reference": "test-only",
+                    "training_mode": "experimental_full_fit_no_held_out_evaluation",
+                }
+
+        self.server.audio_model = ControlledTestModel()
+        with self.request_audio(long_audio_fixture_bytes(180)) as response:
+            body = json.loads(response.read())
+        self.assertEqual(body["classification"]["label"], "Teacher Discussion")
 
     def test_wrong_audio_content_type_is_rejected(self):
         with self.assertRaises(HTTPError) as caught:

@@ -162,12 +162,18 @@ activate `.venv`, and launch from the repository root:
 
     python -m backend.app
 
-The direct backend entry point requires the database connection, but the
-model is loaded only when classification is requested. The helper script
-`backend/run_local_demo.ps1` also performs a model-artifact preflight and
-expects `ml/.venv`; the command above uses the existing root `.venv` instead.
-Startup is successful only after the PostgreSQL pool opens and the server
-reports its listening address. In another terminal, check health:
+The model is loaded only when classification is requested. The direct backend
+entry point starts in degraded mode if PostgreSQL configuration or connection
+is unavailable: `/health` remains reachable, while event create/list requests
+return the existing HTTP 503 `storage_unavailable` response. Its health payload
+reports process and warning-configuration status, not database connectivity;
+check event-history availability separately. The server does not retry the
+database connection automatically; restore PostgreSQL and restart the backend.
+The helper script `backend/run_local_demo.ps1` performs a model preflight and
+expects `ml/.venv`; it also requires `SONIQ_DATABASE_URL` to be present before
+launching. The direct command above uses the selected Python environment.
+When the repository pool opens, the process logs the listening address and
+event persistence is available. In another terminal, check health:
 
     Invoke-RestMethod http://127.0.0.1:8000/health | ConvertTo-Json -Depth 5
 

@@ -23,8 +23,11 @@ joined into one lifecycle.
    timestamp behavior before implementation.
 2. The host companion wraps the samples in a complete PCM WAV and submits them
    to the existing loopback-only `/api/v1/classify` route. The format and window
-   must match the recovered model's preprocessing metadata. No model is
-   currently available, so this step cannot produce a live classification yet.
+   must match the artifact's preprocessing metadata. Experimental model
+   artifacts are present in this checkout, but their metadata marks them as
+   full-fit runs without held-out evaluation and the data review as incomplete.
+   They have not been loaded or validated in this environment and are not
+   evidence of an approved or evaluated classifier.
 3. The companion pairs the class result with an independent calibrated dB SPL
    measurement and its observation timestamp. Raw I2S/RMS amplitude must never
    be represented as dB SPL. A missing, uncalibrated, invalid, or older than
@@ -48,10 +51,13 @@ joined into one lifecycle.
    hardware safety tests. The current firmware keeps physical buzzer operation
    disabled; this proposal does not change that behavior.
 
-The host companion should communicate with the backend only through loopback.
-The backend must remain bound to a loopback address. A future network transport
-would require an approved authenticated design before any endpoint is exposed
-outside the host.
+The backend defaults to loopback. Step 1 adds an opt-in private IPv4 listener
+for the existing firmware event endpoint; see `LAN_CONNECTIVITY.md` for the
+host firewall and ESP32 address setup. This enables LAN event posts only. The
+host audio companion should continue using loopback, `/api/v1/classify` remains
+loopback-client-only, and this change does not implement the proposed audio
+transport or authorize broader network deployment. Any network access beyond
+a trusted private LAN requires a separately approved authenticated design.
 
 ## Decisions required before implementation
 

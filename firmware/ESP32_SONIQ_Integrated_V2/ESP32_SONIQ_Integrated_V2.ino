@@ -14,7 +14,7 @@ const char* WIFI_SSID = "YOUR_WIFI_NAME";
 const char* WIFI_PASSWORD = "YOUR_WIFI_PASSWORD";
 
 const char* SERVER_URL =
-  "http://192.168.1.3:8000/api/v1/events";
+  "http://YOUR_COMPUTER_LAN_IPV4:8000/api/v1/events";
 
 const char* DEVICE_ID = "ESP32_CLASSROOM_01";
 

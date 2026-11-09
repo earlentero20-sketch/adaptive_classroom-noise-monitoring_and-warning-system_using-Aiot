@@ -1,0 +1,2 @@
+# Optional only for an explicitly configured USB-serial receiver.
+pyserial>=3.5,<4

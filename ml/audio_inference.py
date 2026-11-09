@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from ml.data_pipeline import (
+    AudioFileInfo,
     PreprocessingConfig,
     preprocess_wav_bytes,
     validate_audio_bytes,
@@ -111,9 +112,9 @@ def load_audio_model(artifact_path: str | Path) -> AudioModelRuntime:
     return AudioModelRuntime(classifier, preprocessing, extractor, reference, training_mode)
 
 
-def validate_wav_sample(payload: bytes) -> None:
-    """Validate the transport-neutral input before checking model availability."""
+def validate_wav_sample(payload: bytes) -> AudioFileInfo:
+    """Validate a complete WAV and return its verified stream properties."""
     try:
-        validate_audio_bytes(payload)
+        return validate_audio_bytes(payload)
     except (TypeError, ValueError) as error:
         raise InvalidAudioSample(str(error)) from error

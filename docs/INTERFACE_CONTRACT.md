@@ -210,9 +210,16 @@ open team decisions. Do not connect this classifier response to a warning
 until confidence handling and the independent calibrated measurement source
 are approved.
 
-The server binds to `127.0.0.1:8000` by default for local development. This is
-not a secured network deployment and does not connect to firmware or the
-dashboard automatically. The project warning limits are fixed at a reading
+The server binds to `127.0.0.1:8000` by default for local development. Set
+`BACKEND_HOST=0.0.0.0` to listen on IPv4 interfaces, or set it to a specific
+RFC1918 private IPv4 address; `BACKEND_PORT` defaults to `8000`. Public IPv4
+bind addresses are rejected. A LAN bind is intended only for a trusted private
+network with an appropriately scoped Windows Firewall rule; do not configure
+router port forwarding or expose this unauthenticated service publicly. See
+[`docs/LAN_CONNECTIVITY.md`](LAN_CONNECTIVITY.md) for Windows and ESP32 setup.
+The browser CORS allowlist remains loopback-only, and `/api/v1/classify` remains
+restricted to loopback clients. This does not connect the dashboard or classifier
+to firmware automatically. The project warning limits are fixed at a reading
 strictly above 75 dB SPL and a maximum measurement age of 30 seconds; configured
 values may make those limits stricter, never weaker. The broader interface and
 classification-confidence rule remain proposed and require component-owner

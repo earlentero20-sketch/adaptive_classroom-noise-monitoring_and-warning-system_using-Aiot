@@ -41,6 +41,7 @@ MIN_WARNING_THRESHOLD_DB_SPL = 75.0
 MAX_MEASUREMENT_AGE_SECONDS = 30.0
 SENSOR_STATUSES = ("online", "offline", "unknown")
 MAX_AUDIO_REQUEST_BYTES = 32 * 1024 * 1024
+MAX_AUDIO_DURATION_SECONDS = 180.0
 MAX_EVENT_REQUEST_BYTES = 1024 * 1024
 MAX_EVENT_PAGE_SIZE = 100
 MAX_DATABASE_OFFSET = (1 << 63) - 1
@@ -644,7 +645,11 @@ class BackendHandler(BaseHTTPRequestHandler):
             audio_bytes = self.rfile.read(content_length)
             if len(audio_bytes) != content_length:
                 raise InvalidAudioSample("audio request body is incomplete")
-            validate_wav_sample(audio_bytes)
+            audio_info = validate_wav_sample(audio_bytes)
+            if audio_info.duration_seconds > MAX_AUDIO_DURATION_SECONDS:
+                raise InvalidAudioSample(
+                    f"WAV duration must not exceed {MAX_AUDIO_DURATION_SECONDS:g} seconds"
+                )
             model = getattr(self.server, "audio_model", None)
             if model is None:
                 artifact_path = os.environ.get("SONIQ_AUDIO_MODEL_PATH")
@@ -742,6 +747,22 @@ def _is_loopback_host(host: str) -> bool:
     return address.version == 4 and address.is_loopback
 
 
+def _is_allowed_bind_host(host: str) -> bool:
+    """Allow loopback or an RFC1918 IPv4 address, never a public bind address."""
+    if _is_loopback_host(host) or host == "0.0.0.0":
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    private_lan_ranges = (
+        ipaddress.ip_network("10.0.0.0/8"),
+        ipaddress.ip_network("172.16.0.0/12"),
+        ipaddress.ip_network("192.168.0.0/16"),
+    )
+    return address.version == 4 and any(address in network for network in private_lan_ranges)
+
+
 class ConfiguredHTTPServer(HTTPServer):
     def __init__(
         self,
@@ -759,8 +780,10 @@ class ConfiguredHTTPServer(HTTPServer):
 
 def main() -> None:
     host = os.environ.get("BACKEND_HOST", "127.0.0.1")
-    if not _is_loopback_host(host):
-        raise SystemExit("BACKEND_HOST must be a loopback address for local development")
+    if not _is_allowed_bind_host(host):
+        raise SystemExit(
+            "BACKEND_HOST must be loopback, 0.0.0.0, or a private IPv4 address"
+        )
     port_text = os.environ.get("BACKEND_PORT", "8000")
     try:
         port = int(port_text)
@@ -770,7 +793,17 @@ def main() -> None:
         raise SystemExit("BACKEND_PORT must be between 1 and 65535") from error
 
     config = BackendConfig.from_environment()
-    repository = PostgresEventRepository.from_environment()
+    repository = None
+    try:
+        repository = PostgresEventRepository.from_environment()
+    except Exception:
+        # Keep health reachable in degraded mode. Existing event handlers
+        # return the established storage_unavailable response without a repo.
+        # Avoid logging driver details, which may contain connection metadata.
+        print(
+            "WARNING: PostgreSQL unavailable; starting in degraded mode. "
+            "Event endpoints will return storage_unavailable until restart."
+        )
     try:
         with ConfiguredHTTPServer(
             (host, port), config, event_repository=repository
@@ -785,7 +818,8 @@ def main() -> None:
             except KeyboardInterrupt:
                 print("\nStopping SONIQ backend")
     finally:
-        repository.close()
+        if repository is not None:
+            repository.close()
 
 
 if __name__ == "__main__":
