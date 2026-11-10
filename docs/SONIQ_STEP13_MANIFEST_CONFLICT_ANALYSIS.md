@@ -1,0 +1,12 @@
+﻿# SONIQ Step 13 Manifest Conflict Analysis
+
+The three files exist only in the recovered handoff tree; no PC-49 counterpart or second copy was found. Each has one reachable history entry, the handoff commit `a7e7a240dddfe8a256ed401822e7ee1dc25508c8`; no alternate historical version appeared in `git log --all`. No content matching the manifest-expected hashes was found in another accessible ref/archive.
+
+| File | Manifest expected size / SHA-256 | Recovered blob size / SHA-256 | Windows-filtered size / SHA-256 | PC-49 version | Finding / recommendation |
+|---|---|---|---|---|---|
+| `SONIQ_COMPLETE_HANDOFF_PUBLISH_PLAN.md` | 4092 / `c3aa2e108b5d3e4e73ca1ebc2689d4e97a6f4f2c812aa07586fc6d65f6d3b4ec` | 4090 / `21f0bdbfe1012d3cf9552dc7233abdc4b7b115ebf06592ba892029a8a038012d` | 4130 / `bc4a38f04296bf41f04ea1e047b284136b6de8d3ae94fc8fa5a88a3577887500` | Absent | Neither raw nor Windows-filtered bytes match the manifest; simple line-ending conversion does not explain it. Included from the recovered commit version with explicit approval; labeled MANIFEST HASH MISMATCH — INCLUDED WITH APPROVAL. Not claimed checksum-verified against the original manifest. |
+| `SONIQ_HANDOFF_EXCLUSIONS.md` | 1542 / `f47be6b0476821a21ab543535708c83404755c685728c12b0d05da1ca9752c90` | 1541 / `e7d53d4e316e1d58a0bd9ca03e820199c931bdcbd0822f72e9e7b4ae073274d3` | 1554 / `caad04c55b56a10b093933971428c1669b1b872f60498174eb8c18707f47cff3` | Absent | Neither representation matches; formatting or line-ending-only explanation is not supported. Included from the recovered commit version with explicit approval; labeled MANIFEST HASH MISMATCH — INCLUDED WITH APPROVAL. Not claimed checksum-verified against the original manifest. |
+| `SONIQ_SECOND_PC_SETUP_GUIDE.md` | 3341 / `8eb8aa87cd17f6b0076f09663505cb9c099026e4f8c10be1b249ad5ac9d71258` | 3340 / `1a208f4cae858f24fdb56f5d99253d1cb6aefc7504a85914304ba0291688d00c` | 3394 / `3208f37c8de4de7ac2cdf47075a5f5b65de4ba5ccf03fd8ac5e9232685c6d4b8` | Absent | Neither representation matches; formatting or line-ending-only explanation is not supported. Included from the recovered commit version with explicit approval; labeled MANIFEST HASH MISMATCH — INCLUDED WITH APPROVAL. Not claimed checksum-verified against the original manifest. |
+
+The recovered handoff commit is the only available provenance for these files, but it does not establish that the manifest's expected versions are wrong. The user approved the recovered-ref version for package inclusion. The three PC-49 counterparts are absent; no local file was edited.
+
