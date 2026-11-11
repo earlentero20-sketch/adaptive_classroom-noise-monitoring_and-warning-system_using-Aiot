@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="theme-color" content="#f4f6f1">
+	<meta name="soniq-api-base" content="">
+	<title>SONIQ | Classroom noise monitoring</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+	<link rel="stylesheet" href="colors.css">
+	<link rel="stylesheet" href="backend-adapter.css">
+	<link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+	<div class="app-shell">
+		<aside class="sidebar" aria-label="Main navigation">
+			<a class="brand" href="#overview" aria-label="SONIQ home"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span>soniq<span class="brand-period">.</span></span></a>
+			<div class="workspace-label">CLASSROOM MONITORING</div>
+			<nav class="main-nav">
+				<a class="nav-link active" href="#overview"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="4" rx="1.5"/><rect x="13.5" y="10.5" width="7" height="10" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/></svg><span>Overview</span></a>
+				<a class="nav-link" href="#history"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Event history</span></a>
+				<a class="nav-link" href="#integration"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7h8M8 12h8M8 17h5"/><rect x="3.5" y="3.5" width="17" height="17" rx="2"/></svg><span>Integration checks</span></a>
+			</nav>
+			<div class="sidebar-bottom">
+				<div class="device-card">
+					<span class="device-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v9m0 0 4-4m-4 4L8 8M5 14v4a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3v-4"/></svg></span>
+					<span><strong id="sidebar-backend-label">Backend status</strong><small id="sidebar-backend-detail">Not checked</small></span>
+					<span class="online-pip" id="sidebar-backend-pip" data-state="unknown" aria-hidden="true"></span>
+				</div>
+				<button class="profile-button" type="button" id="profile-button">
+					<span class="avatar" aria-hidden="true">SQ</span>
+					<span class="profile-copy"><strong>Teacher console</strong><small>Local prototype</small></span>
+					<svg class="profile-more" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+				</button>
+			</div>
+		</aside>
+
+		<main class="main-content" id="overview">
+			<header class="topbar">
+				<div class="breadcrumb"><span>SONIQ</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5"/></svg><strong>Classroom overview</strong></div>
+				<div class="topbar-actions">
+					<span class="demo-badge" id="data-source-badge">BACKEND DATA ONLY</span>
+					<span class="last-updated"><span class="live-pip" id="live-pip" data-state="unknown" aria-hidden="true"></span><span id="last-updated-text">Not checked</span></span>
+					<button class="top-icon" id="top-refresh" type="button" aria-label="Refresh dashboard data" title="Refresh dashboard data"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 6.7M20 5v6h-6"/></svg></button>
+				</div>
+			</header>
+
+			<div class="content-wrap">
+				<section class="page-heading">
+					<div>
+						<div class="eyebrow"><span class="eyebrow-line"></span><span id="current-date"></span></div>
+						<h1>Classroom monitoring<span class="heading-period">.</span></h1>
+						<p class="heading-subtitle">This dashboard displays only data returned by the SONIQ backend. Missing readings, unavailable endpoints, and unknown warning decisions are labelled explicitly — never simulated.</p>
+					</div>
+					<div class="heading-actions">
+						<button class="export-button" id="refresh-data" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 6.7M20 5v6h-6"/></svg><span>Refresh data</span></button>
+						<button class="export-button" id="export-button" type="button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3"/></svg><span>Export event report</span></button>
+					</div>
+				</section>
+
+				<section class="state-banner" id="connection-banner" data-state="idle" role="status" aria-live="polite">
+					<span class="state-dot" aria-hidden="true"></span>
+					<div>
+						<strong id="connection-title">Backend status not checked</strong>
+						<p id="connection-message">Use Refresh data to check the SONIQ backend at the configured API URL.</p>
+					</div>
+				</section>
+
+				<section class="view-switch" aria-label="Dashboard view">
+					<div><strong>Monitoring view</strong><span id="view-description">Latest backend data</span></div>
+					<div class="segmented view-tabs" role="tablist" aria-label="Monitoring view">
+						<button class="view-tab active" id="live-tab" type="button" role="tab" aria-selected="true" aria-controls="live-summary" tabindex="0" data-view="live">Live</button>
+						<button class="view-tab" id="history-tab" type="button" role="tab" aria-selected="false" aria-controls="history-summary" tabindex="-1" data-view="history">History</button>
+					</div>
+				</section>
+
+				<section class="summary-grid live-summary" id="live-summary" role="tabpanel" aria-labelledby="live-tab" tabindex="0" aria-label="Latest backend monitoring summary">
+					<article class="summary-card">
+						<div class="card-topline"><span class="metric-label">BACKEND CONNECTION</span><span class="metric-icon sound-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12h3l2-5 4 10 2-5h5"/></svg></span></div>
+						<div class="metric-value-row"><strong class="metric-value metric-text" id="backend-status-value" data-state="idle">Not checked</strong></div>
+						<p class="metric-detail" id="backend-status-detail">GET /health has not been called yet.</p>
+					</article>
+					<article class="summary-card">
+						<div class="card-topline"><span class="metric-label">WARNING CONFIGURATION</span><span class="metric-icon track-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 2.8 19h18.4L12 3Z"/><path d="M12 9v4m0 3h.01"/></svg></span></div>
+						<div class="metric-value-row"><strong class="metric-value metric-text" id="warning-config-value" data-state="idle">Not checked</strong></div>
+						<p class="metric-detail" id="warning-config-detail">Warning readiness is reported separately from backend reachability.</p>
+					</article>
+					<article class="summary-card">
+						<div class="card-topline"><span class="metric-label">LATEST CLASSIFICATION</span><span class="metric-icon time-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 1 2.3 5.7M4 19v-6h6"/></svg></span></div>
+						<div class="metric-value-row"><strong class="metric-value metric-text" id="classification-value" data-state="unavailable">Unavailable</strong></div>
+						<p class="metric-detail" id="classification-detail">No actual classification has been received.</p>
+					</article>
+					<article class="summary-card">
+						<div class="card-topline"><span class="metric-label">LATEST SOUND LEVEL</span><span class="metric-icon sound-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 10v4h4l5 4V6l-5 4H3ZM16 9a5 5 0 0 1 0 6M18.5 6.5a9 9 0 0 1 0 11"/></svg></span></div>
+						<div class="metric-value-row"><strong class="metric-value metric-text" id="sound-level-value" data-state="unavailable">Unavailable</strong></div>
+						<p class="metric-detail" id="sound-level-detail">No sound-level reading is available from the backend.</p>
+					</article>
+					<article class="summary-card">
+						<div class="card-topline"><span class="metric-label">CURRENT WARNING STATUS</span><span class="metric-icon alert-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg></span></div>
+						<div class="metric-value-row"><strong class="metric-value metric-text" id="warning-status-value" data-state="unknown">Unknown</strong></div>
+						<p class="metric-detail" id="warning-status-detail">Warning status cannot be determined without an actual event.</p>
+					</article>
+					<article class="summary-card">
+						<div class="card-topline"><span class="metric-label">LATEST EVENT TIME</span><span class="metric-icon track-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span></div>
+						<div class="metric-value-row"><strong class="metric-value metric-text" id="latest-event-value" data-state="unavailable">Unavailable</strong></div>
+						<p class="metric-detail" id="latest-event-detail">No event has been loaded.</p>
+					</article>
+				</section>
+
+				<section class="summary-grid history-summary" id="history-summary" role="tabpanel" aria-labelledby="history-tab" tabindex="0" aria-label="Event history summary" hidden>
+					<article class="summary-card">
+						<div class="card-topline"><span class="metric-label">EVENTS LOADED</span><span class="metric-icon track-icon" aria-hidden="true">#</span></div>
+						<div class="metric-value-row"><strong class="metric-value" id="history-total" data-state="unavailable">Unavailable</strong></div>
+						<p class="metric-detail" id="history-total-detail">Event history has not been loaded.</p>
+					</article>
+					<article class="summary-card">
+						<div class="card-topline"><span class="metric-label">WARNINGS TRIGGERED</span><span class="metric-icon alert-icon" aria-hidden="true">!</span></div>
+						<div class="metric-value-row"><strong class="metric-value" id="history-warnings" data-state="unavailable">Unavailable</strong></div>
+						<p class="metric-detail" id="history-warnings-detail">Actual warning decisions only.</p>
+					</article>
+					<article class="summary-card">
+						<div class="card-topline"><span class="metric-label">TEACHER DISCUSSION</span><span class="metric-icon time-icon" aria-hidden="true">T</span></div>
+						<div class="metric-value-row"><strong class="metric-value" id="history-teacher" data-state="unavailable">Unavailable</strong></div>
+						<p class="metric-detail" id="history-teacher-detail">Exact model label.</p>
+					</article>
+					<article class="summary-card">
+						<div class="card-topline"><span class="metric-label">STUDENT CONVERSATION</span><span class="metric-icon sound-icon" aria-hidden="true">S</span></div>
+						<div class="metric-value-row"><strong class="metric-value" id="history-student" data-state="unavailable">Unavailable</strong></div>
+						<p class="metric-detail" id="history-student-detail">Exact model label.</p>
+					</article>
+					<article class="summary-card">
+						<div class="card-topline"><span class="metric-label">SOUND READINGS</span><span class="metric-icon sound-icon" aria-hidden="true">dB</span></div>
+						<div class="metric-value-row"><strong class="metric-value" id="history-readings" data-state="unavailable">Unavailable</strong></div>
+						<p class="metric-detail" id="history-readings-detail">Calibrated dB SPL readings returned by events.</p>
+					</article>
+					<article class="summary-card">
+						<div class="card-topline"><span class="metric-label">LATEST EVENT</span><span class="metric-icon time-icon" aria-hidden="true">◷</span></div>
+						<div class="metric-value-row"><strong class="metric-value metric-text" id="history-latest" data-state="unavailable">Unavailable</strong></div>
+						<p class="metric-detail" id="history-latest-detail">No event timestamp available.</p>
+					</article>
+				</section>
+
+				<section class="dashboard-grid">
+					<article class="panel monitoring-panel" aria-labelledby="monitoring-title">
+						<div class="panel-header">
+							<div><div class="panel-kicker">LATEST BACKEND DATA</div><h2 id="monitoring-title">Monitoring snapshot</h2></div>
+							<span class="state-chip" id="monitoring-source" data-state="unavailable">Unavailable</span>
+						</div>
+						<div class="monitor-grid">
+							<div class="monitor-field"><span class="monitor-label">Classification</span><strong class="monitor-value" id="monitor-classification" data-state="unavailable">Unavailable</strong><span class="monitor-meta" id="monitor-classification-meta">No model result received.</span></div>
+							<div class="monitor-field"><span class="monitor-label">Sound level</span><strong class="monitor-value" id="monitor-sound" data-state="unavailable">Unavailable</strong><span class="monitor-meta" id="monitor-sound-meta">No microphone reading received.</span></div>
+							<div class="monitor-field"><span class="monitor-label">Warning decision</span><strong class="monitor-value" id="monitor-warning" data-state="unknown">Unknown</strong><span class="monitor-meta" id="monitor-warning-meta">Warning policy was not evaluated.</span></div>
+							<div class="monitor-field"><span class="monitor-label">Warning reason</span><strong class="monitor-value" id="monitor-reason" data-state="unavailable">Unavailable</strong><span class="monitor-meta" id="monitor-reason-meta">No backend warning reason received.</span></div>
+							<div class="monitor-field"><span class="monitor-label">Observed / received</span><strong class="monitor-value" id="monitor-time" data-state="unavailable">Unavailable</strong><span class="monitor-meta" id="monitor-time-meta">No timestamp available.</span></div>
+							<div class="monitor-field"><span class="monitor-label">Sensor / device</span><strong class="monitor-value" id="monitor-sensor" data-state="unavailable">Unavailable</strong><span class="monitor-meta" id="monitor-sensor-meta">No device information available.</span></div>
+						</div>
+						<p class="inline-note" id="monitoring-note">The dashboard does not estimate readings or warning decisions. A warning decision does not prove that the physical buzzer fired.</p>
+					</article>
+
+					<article class="panel readiness-panel" aria-labelledby="readiness-title">
+						<div class="panel-header">
+							<div><div class="panel-kicker">BACKEND HEALTH</div><h2 id="readiness-title">Connection &amp; readiness</h2></div>
+							<span class="state-chip" id="health-state" data-state="idle">Not checked</span>
+						</div>
+						<dl class="health-list">
+							<div><dt>API base URL</dt><dd id="health-api-url">Not checked</dd></div>
+							<div><dt>Backend process</dt><dd id="health-process">Not checked</dd></div>
+							<div><dt>Warning configuration</dt><dd id="health-warning">Not checked</dd></div>
+							<div><dt>Configuration reasons</dt><dd id="health-reasons">Not checked</dd></div>
+							<div><dt>Event history endpoint</dt><dd id="health-events">Not checked</dd></div>
+							<div><dt>Physical hardware</dt><dd>Not verified by the dashboard</dd></div>
+						</dl>
+						<p class="inline-note">Backend reachability, warning configuration, and sensor/hardware status are separate concerns. The dashboard never computes thresholds or warning policy.</p>
+					</article>
+
+					<article class="panel history-panel" id="history" aria-labelledby="events-title">
+						<div class="panel-header">
+							<div><div class="panel-kicker">EVENT HISTORY</div><h2 id="events-title">Recent events</h2></div>
+							<button class="text-action" id="events-refresh" type="button">Refresh</button>
+						</div>
+						<div class="table-wrap">
+							<table class="data-table">
+								<caption class="sr-only">Actual events returned by the SONIQ backend</caption>
+								<thead>
+									<tr><th scope="col">Received</th><th scope="col">Classification</th><th scope="col">Sound level</th><th scope="col">Warning</th><th scope="col">Reason</th><th scope="col">Device</th></tr>
+								</thead>
+								<tbody id="events-body">
+									<tr class="empty-row" data-state="loading"><td colspan="6">Checking event history…</td></tr>
+								</tbody>
+							</table>
+						</div>
+						<div class="table-footer">
+							<span id="events-summary">No event data loaded.</span>
+							<div class="pager">
+								<button type="button" id="events-prev" disabled>Previous</button>
+								<button type="button" id="events-next" disabled>Next</button>
+							</div>
+						</div>
+					</article>
+
+					<article class="panel classify-panel" aria-labelledby="classify-title">
+						<div class="panel-header">
+							<div><div class="panel-kicker">MODEL INFERENCE</div><h2 id="classify-title">Classify a local WAV</h2></div>
+							<span class="state-chip" id="inference-state" data-state="idle">Idle</span>
+						</div>
+						<p class="inline-note">Sends one WAV file to <code>POST /api/v1/classify</code>. The endpoint returns a classification only; it does not evaluate warnings or provide sound-level measurements.</p>
+						<form class="classify-form" id="classify-form">
+							<label class="file-label" for="classify-file">Local WAV file
+								<input id="classify-file" type="file" accept=".wav,audio/wav" required>
+							</label>
+							<button type="submit" class="primary-button" id="classify-submit">Run inference</button>
+						</form>
+						<p class="inline-note" id="inference-message" role="status" aria-live="polite">No inference requested.</p>
+						<dl class="inference-result" id="inference-result" hidden>
+							<div><dt>Predicted class</dt><dd id="inference-class">Unavailable</dd></div>
+							<div><dt>Class probability</dt><dd id="inference-probability">Unavailable</dd></div>
+							<div><dt>Model state</dt><dd id="inference-model">Unavailable</dd></div>
+							<div><dt>Observed at</dt><dd id="inference-observed">Unavailable</dd></div>
+							<div><dt>Warning policy</dt><dd>Not evaluated by this endpoint</dd></div>
+							<div><dt>Sound level</dt><dd>Not provided by this endpoint</dd></div>
+							<div><dt>Hardware</dt><dd>Not tested</dd></div>
+						</dl>
+					</article>
+				</section>
+
+				<section class="panel backend-check-panel" id="integration" aria-labelledby="integration-title">
+					<div class="panel-header">
+						<div><div class="panel-kicker">API INTEGRATION</div><h2 id="integration-title">Backend data sources</h2></div>
+						<span class="state-chip" id="integration-state" data-state="idle">Not checked</span>
+					</div>
+					<dl class="integration-list">
+						<div><dt><code>GET /health</code></dt><dd id="integration-health" data-state="idle">Not checked</dd></div>
+						<div><dt><code>GET /api/v1/events?limit=10&amp;offset=0</code></dt><dd id="integration-events" data-state="idle">Not checked</dd></div>
+						<div><dt><code>POST /api/v1/classify</code></dt><dd id="integration-classification" data-state="idle">No WAV submitted</dd></div>
+					</dl>
+					<p class="inline-note">Event history is read from PostgreSQL and refreshed every 30 seconds while this page is visible. The backend has no live-stream endpoint. Classification is a manual WAV upload; it does not produce a sound-level reading or warning decision. A backend warning does not verify physical buzzer operation.</p>
+				</section>
+
+				<footer class="page-footer">
+					<span>SONIQ <i></i> SMART CLASSROOM NOISE MONITORING</span>
+					<span>Warning policy and thresholds are owned by the backend.</span>
+				</footer>
+			</div>
+		</main>
+	</div>
+	<div class="toast" id="toast" role="status" aria-live="polite"></div>
+	<script type="module" src="dashboard.mjs"></script>
+</body>
+</html>

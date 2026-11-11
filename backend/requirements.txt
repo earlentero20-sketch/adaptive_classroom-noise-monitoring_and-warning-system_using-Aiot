@@ -1,0 +1,2 @@
+# Install alongside ml/requirements.txt because backend.app imports ML modules.
+psycopg[binary,pool]>=3.2,<4

@@ -1,0 +1,59 @@
+.backend-check-panel {
+	margin-top: 14px;
+}
+
+.integration-list {
+	display: grid;
+	gap: 0;
+	margin: 14px 0 0;
+}
+
+.integration-list > div {
+	display: grid;
+	grid-template-columns: minmax(210px, .7fr) minmax(0, 1fr);
+	gap: 12px;
+	padding: 9px 0;
+	border-bottom: 1px solid #eff2ed;
+}
+
+.integration-list > div:last-child {
+	border-bottom: 0;
+}
+
+.integration-list dt {
+	color: #7b8780;
+	font-size: 11px;
+}
+
+.integration-list dt code {
+	color: #3d5b49;
+	font: 10px 'DM Mono', monospace;
+	overflow-wrap: anywhere;
+}
+
+.integration-list dd {
+	margin: 0;
+	color: #34443a;
+	font-size: 11px;
+	line-height: 1.45;
+	overflow-wrap: anywhere;
+}
+
+.integration-list dd[data-state="ok"] {
+	color: #277b59;
+}
+
+.integration-list dd[data-state="warn"] {
+	color: #9a6a1f;
+}
+
+.integration-list dd[data-state="error"] {
+	color: #b64b3d;
+}
+
+@media (max-width: 560px) {
+	.integration-list > div {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 4px;
+	}
+}
