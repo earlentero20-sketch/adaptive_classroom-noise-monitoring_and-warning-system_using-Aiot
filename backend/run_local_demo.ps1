@@ -3,7 +3,7 @@ param([switch]$PreflightOnly)
 $ErrorActionPreference = "Stop"
 
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
-$python = Join-Path $repositoryRoot "ml\.venv\Scripts\python.exe"
+$python = Join-Path $repositoryRoot ".venv312\Scripts\python.exe"
 if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
 	throw "Project Python environment not found: $python"
 }

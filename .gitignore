@@ -9,3 +9,5 @@ venv/
 *.broken-backup
 
 soniq-test-silence.wav
+
+.venv312/

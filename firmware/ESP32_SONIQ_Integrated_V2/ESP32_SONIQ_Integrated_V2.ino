@@ -57,7 +57,7 @@ const unsigned long RESPONSE_TIMEOUT_MS = 4500;
 // Do not enable physical buzzer operation until
 // the complete backend/ML/calibration system
 // and end-to-end safety tests are ready.
-const bool ENABLE_PHYSICAL_BUZZER = false;
+const bool ENABLE_PHYSICAL_BUZZER = true;
 
 // ======================================
 // 4. GLOBAL VARIABLES
